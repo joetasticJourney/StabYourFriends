@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3 uid="uid://c4xqkhm7yf6dp"]
+
+[ext_resource type="Script" path="res://Scripts/UI/PlayerSlot.cs" id="1_player_slot"]
+
+[node name="PlayerSlot" type="PanelContainer"]
+custom_minimum_size = Vector2(200, 60)
+script = ExtResource("1_player_slot")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="."]
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 196.0
+offset_bottom = 56.0
+
+[node name="ColorIndicator" type="ColorRect" parent="HBoxContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(8, 0)
+layout_mode = 2
+color = Color(0.5, 0.5, 0.5, 1)
+
+[node name="NameLabel" type="Label" parent="HBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 1
+text = "Waiting for player..."
+vertical_alignment = 1

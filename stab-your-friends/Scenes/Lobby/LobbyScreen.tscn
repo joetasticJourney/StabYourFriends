@@ -1,0 +1,94 @@
+[gd_scene load_steps=4 format=3 uid="uid://bw7x4rqk3pyu"]
+
+[ext_resource type="Script" path="res://Scripts/UI/LobbyScreen.cs" id="1_lobby_screen"]
+[ext_resource type="PackedScene" uid="uid://c4xqkhm7yf6dp" path="res://Scenes/Lobby/PlayerSlot.tscn" id="2_player_slot"]
+[ext_resource type="PackedScene" uid="uid://dkm8xqr5yh3wf" path="res://Scenes/UI/GameModeMenu.tscn" id="3_gamemode_menu"]
+
+[node name="LobbyScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lobby_screen")
+PlayerSlotScene = ExtResource("2_player_slot")
+GameModeMenuScene = ExtResource("3_gamemode_menu")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 20
+
+[node name="TitleContainer" type="VBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="VBoxContainer/TitleContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+text = "STAB YOUR FRIENDS"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="VBoxContainer/TitleContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Local Multiplayer Lobby"
+horizontal_alignment = 1
+
+[node name="ServerInfo" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 40
+
+[node name="IpLabel" type="Label" parent="VBoxContainer/ServerInfo"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "IP: 192.168.1.100"
+
+[node name="PortLabel" type="Label" parent="VBoxContainer/ServerInfo"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Port: 9080"
+
+[node name="Instructions" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Open the web controller on your phone browser and enter the IP address above to join!"
+horizontal_alignment = 1
+
+[node name="PlayerGridContainer" type="CenterContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PlayerGrid" type="GridContainer" parent="VBoxContainer/PlayerGridContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 20
+theme_override_constants/v_separation = 20
+columns = 4
+
+[node name="BottomContainer" type="VBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="StatusLabel" type="Label" parent="VBoxContainer/BottomContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Waiting for players..."
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="VBoxContainer/BottomContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+disabled = true
+text = "Start Game"

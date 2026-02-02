@@ -1,0 +1,55 @@
+[gd_scene load_steps=6 format=3 uid="uid://c8xqkhm9yf8fp"]
+
+[ext_resource type="Script" path="res://Scripts/Game/GameWorld.cs" id="1_game_world"]
+[ext_resource type="PackedScene" uid="uid://b7xqkhm8yf7ep" path="res://Scenes/Game/PlayerCharacter.tscn" id="2_player_character"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_top"]
+size = Vector2(1920, 20)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_left"]
+size = Vector2(20, 1080)
+
+[node name="GameWorld" type="Node2D"]
+script = ExtResource("1_game_world")
+PlayerCharacterScene = ExtResource("2_player_character")
+
+[node name="Background" type="ColorRect" parent="."]
+offset_right = 1920.0
+offset_bottom = 1080.0
+color = Color(0.1, 0.1, 0.15, 1)
+
+[node name="Walls" type="Node2D" parent="."]
+
+[node name="TopWall" type="StaticBody2D" parent="Walls"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/TopWall"]
+position = Vector2(960, -10)
+shape = SubResource("RectangleShape2D_top")
+
+[node name="BottomWall" type="StaticBody2D" parent="Walls"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/BottomWall"]
+position = Vector2(960, 1090)
+shape = SubResource("RectangleShape2D_top")
+
+[node name="LeftWall" type="StaticBody2D" parent="Walls"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/LeftWall"]
+position = Vector2(-10, 540)
+shape = SubResource("RectangleShape2D_left")
+
+[node name="RightWall" type="StaticBody2D" parent="Walls"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/RightWall"]
+position = Vector2(1930, 540)
+shape = SubResource("RectangleShape2D_left")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="GameModeLabel" type="Label" parent="UI"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 300.0
+offset_bottom = 40.0
+theme_override_font_sizes/font_size = 20
+text = "Game Mode: Free For All"
