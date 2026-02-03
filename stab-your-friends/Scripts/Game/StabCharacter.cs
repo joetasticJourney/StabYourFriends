@@ -8,12 +8,19 @@ namespace StabYourFriends.Game;
 public partial class StabCharacter : CharacterBody2D
 {
 	private enum AiState { Pausing, Moving }
+	private enum FacingDirection { Down, Up, Left, Right }
 
 	[Export] public float BaseMoveSpeed { get; set; } = 100f;
 
 	// Base sizes at 1080p reference
 	private const float BaseRadius = 25f;
 	private const float BaseFontSize = 14f;
+
+	// Sprite constants
+	private const int SpriteFrameCount = 8;
+	private const int SpriteFrameWidth = 96;
+	private const int SpriteFrameHeight = 80;
+	private const float AnimationFps = 10f;
 
 	// NPC timing ranges
 	private const float MinPauseTime = 0.5f;
@@ -50,12 +57,13 @@ public partial class StabCharacter : CharacterBody2D
 	public bool IsDead { get; private set; }
 
 	private PlayerController? _controller;
-	private ColorRect _colorRect = null!;
+	private AnimatedSprite2D _animatedSprite = null!;
 	private Label _nameLabel = null!;
 	private CollisionShape2D _collisionShape = null!;
-	private Sprite2D _sprite = null!;
 	private float _scaleFactor = 1f;
 	private float _currentMoveSpeed;
+	private FacingDirection _facing = FacingDirection.Down;
+	private bool _isMoving;
 
 	// Grapple state
 	private bool _isGrappling;
@@ -86,8 +94,7 @@ public partial class StabCharacter : CharacterBody2D
 
 	public override void _Ready()
 	{
-		_sprite = GetNode<Sprite2D>("Sprite2D");
-		_colorRect = GetNode<ColorRect>("Sprite2D/ColorRect");
+		_animatedSprite = GetNode<AnimatedSprite2D>("AnimatedSprite2D");
 		_nameLabel = GetNode<Label>("NameLabel");
 		_collisionShape = GetNode<CollisionShape2D>("CollisionShape2D");
 		_currentMoveSpeed = BaseMoveSpeed;
@@ -97,7 +104,109 @@ public partial class StabCharacter : CharacterBody2D
 		// Get reference to GameWorld parent
 		_gameWorld = GetParent<GameWorld>();
 
+		BuildSpriteFrames();
 		UpdateVisuals();
+		PlayAnimation();
+
+		// Re-apply scale in case SetScale was called before _Ready
+		if (_scaleFactor != 1f)
+		{
+			SetScale(_scaleFactor);
+		}
+	}
+
+	private void BuildSpriteFrames()
+	{
+		var spriteFrames = new SpriteFrames();
+
+		// Remove the default animation
+		if (spriteFrames.HasAnimation("default"))
+		{
+			spriteFrames.RemoveAnimation("default");
+		}
+
+		// Define all animations to load
+		var animations = new (string animName, string path)[]
+		{
+			("idle_down", "res://Sprites/IDLE/idle_down.png"),
+			("idle_up", "res://Sprites/IDLE/idle_up.png"),
+			("idle_left", "res://Sprites/IDLE/idle_left.png"),
+			("idle_right", "res://Sprites/IDLE/idle_right.png"),
+			("run_down", "res://Sprites/RUN/run_down.png"),
+			("run_up", "res://Sprites/RUN/run_up.png"),
+			("run_left", "res://Sprites/RUN/run_left.png"),
+			("run_right", "res://Sprites/RUN/run_right.png"),
+		};
+
+		foreach (var (animName, path) in animations)
+		{
+			spriteFrames.AddAnimation(animName);
+			spriteFrames.SetAnimationSpeed(animName, AnimationFps);
+			spriteFrames.SetAnimationLoop(animName, true);
+
+			var sheetTexture = GD.Load<Texture2D>(path);
+			if (sheetTexture == null)
+			{
+				GD.PrintErr($"Failed to load sprite: {path}");
+				continue;
+			}
+
+			for (int i = 0; i < SpriteFrameCount; i++)
+			{
+				var atlas = new AtlasTexture();
+				atlas.Atlas = sheetTexture;
+				atlas.Region = new Rect2(
+					i * SpriteFrameWidth, 0,
+					SpriteFrameWidth, SpriteFrameHeight
+				);
+				spriteFrames.AddFrame(animName, atlas);
+			}
+		}
+
+		_animatedSprite.SpriteFrames = spriteFrames;
+	}
+
+	private void PlayAnimation()
+	{
+		string dirSuffix = _facing switch
+		{
+			FacingDirection.Up => "up",
+			FacingDirection.Down => "down",
+			FacingDirection.Left => "left",
+			FacingDirection.Right => "right",
+			_ => "down"
+		};
+
+		string animName = (_isMoving ? "run_" : "idle_") + dirSuffix;
+
+		if (_animatedSprite.Animation != animName)
+		{
+			_animatedSprite.Play(animName);
+		}
+	}
+
+	private void UpdateFacingFromVelocity(Vector2 velocity)
+	{
+		if (velocity.LengthSquared() < 0.01f)
+		{
+			_isMoving = false;
+			PlayAnimation();
+			return;
+		}
+
+		_isMoving = true;
+
+		// Pick direction based on which axis has the larger component
+		if (Mathf.Abs(velocity.X) >= Mathf.Abs(velocity.Y))
+		{
+			_facing = velocity.X >= 0 ? FacingDirection.Right : FacingDirection.Left;
+		}
+		else
+		{
+			_facing = velocity.Y >= 0 ? FacingDirection.Down : FacingDirection.Up;
+		}
+
+		PlayAnimation();
 	}
 
 	/// <summary>
@@ -134,11 +243,6 @@ public partial class StabCharacter : CharacterBody2D
 
 	private void UpdateVisuals()
 	{
-		if (_colorRect != null)
-		{
-			_colorRect.Color = CharacterColor;
-		}
-
 		if (_nameLabel != null)
 		{
 			_nameLabel.Text = CharacterName;
@@ -148,10 +252,6 @@ public partial class StabCharacter : CharacterBody2D
 	public void SetColor(Color color)
 	{
 		CharacterColor = color;
-		if (_colorRect != null)
-		{
-			_colorRect.Color = color;
-		}
 	}
 
 	public void SetScale(float scaleFactor)
@@ -161,10 +261,10 @@ public partial class StabCharacter : CharacterBody2D
 		// Scale movement speed
 		_currentMoveSpeed = BaseMoveSpeed * scaleFactor;
 
-		// Scale the sprite (visual)
-		if (_sprite != null)
+		// Scale the animated sprite
+		if (_animatedSprite != null)
 		{
-			_sprite.Scale = new Vector2(scaleFactor, scaleFactor);
+			_animatedSprite.Scale = new Vector2(scaleFactor * 3f, scaleFactor * 3f);
 		}
 
 		// Scale the collision shape
@@ -215,6 +315,7 @@ public partial class StabCharacter : CharacterBody2D
 		if (_isGrappled)
 		{
 			Velocity = Vector2.Zero;
+			UpdateFacingFromVelocity(Vector2.Zero);
 			MoveAndSlide();
 			return;
 		}
@@ -233,6 +334,9 @@ public partial class StabCharacter : CharacterBody2D
 		{
 			MoveAndSlide();
 		}
+
+		// Update animation based on current velocity
+		UpdateFacingFromVelocity(Velocity);
 
 		// Check if NPC hit a wall and needs to change direction
 		CheckWallCollision();
@@ -262,14 +366,14 @@ public partial class StabCharacter : CharacterBody2D
 			float fadeProgress = (_deathTimer - BodyFadeDelay) / FadeDuration;
 			if (fadeProgress >= 1f)
 			{
-				if (_sprite != null) _sprite.Visible = false;
+				if (_animatedSprite != null) _animatedSprite.Visible = false;
 				if (_nameLabel != null) _nameLabel.Visible = false;
 				if (_skullOverlay != null) _skullOverlay.Visible = false;
 			}
 			else
 			{
 				float alpha = 1f - fadeProgress;
-				if (_sprite != null) _sprite.Modulate = new Color(1, 1, 1, alpha);
+				if (_animatedSprite != null) _animatedSprite.Modulate = new Color(1, 1, 1, alpha);
 				if (_nameLabel != null) _nameLabel.Modulate = new Color(1, 1, 1, alpha);
 				if (_skullOverlay != null) _skullOverlay.Modulate = new Color(1, 1, 1, alpha * 0.7f);
 			}
@@ -378,7 +482,7 @@ public partial class StabCharacter : CharacterBody2D
 		float playerspeed = _currentMoveSpeed;
 		if (inputMag > 0.6f)
 		{
-			playerspeed += _currentMoveSpeed * (((inputMag > 1 ) ? 1 : inputMag) - 0.6f) / 0.4f;
+			playerspeed += _currentMoveSpeed * (((inputMag > 1 ) ? 1 : inputMag) - 0.6f) / 0.2f;
 		}
 
 		Velocity = moveInput.Normalized() * playerspeed;
@@ -760,7 +864,50 @@ public partial class StabCharacter : CharacterBody2D
 			}
 		};
 
+		// Draw debug triangle for the cone
+		SpawnDebugCone(spawnPosition, angle, scaledDistance);
+
 		GD.Print($"[Stab] Spawned particle effect at {spawnPosition}, direction={direction}, angle={Mathf.RadToDeg(angle):F1}°");
+	}
+
+	private void SpawnDebugCone(Vector2 origin, float angle, float distance)
+	{
+		float halfSpread = StabParticleSpreadAngle / 2f;
+
+		// Calculate the three points of the triangle
+		Vector2 tip1 = origin + new Vector2(
+			Mathf.Cos(angle - halfSpread),
+			Mathf.Sin(angle - halfSpread)
+		) * distance;
+
+		Vector2 tip2 = origin + new Vector2(
+			Mathf.Cos(angle + halfSpread),
+			Mathf.Sin(angle + halfSpread)
+		) * distance;
+
+		var line = new Line2D();
+		line.Points = new Vector2[] { origin, tip1, tip2, origin };
+		line.Width = 2f;
+		line.DefaultColor = new Color(1f, 1f, 0f, 0.8f); // Yellow
+
+		if (_gameWorld != null)
+		{
+			_gameWorld.AddChild(line);
+		}
+		else
+		{
+			GetTree().CurrentScene.AddChild(line);
+		}
+
+		// Remove after particles finish
+		var timer = GetTree().CreateTimer(StabParticleLifetime + 0.5f);
+		timer.Timeout += () =>
+		{
+			if (IsInstanceValid(line))
+			{
+				line.QueueFree();
+			}
+		};
 	}
 
 	/// <summary>
@@ -800,6 +947,12 @@ public partial class StabCharacter : CharacterBody2D
 
 		// Stop movement
 		Velocity = Vector2.Zero;
+
+		// Stop animation
+		if (_animatedSprite != null)
+		{
+			_animatedSprite.Stop();
+		}
 
 		// Create death visuals
 		CreateDeathVisuals();
