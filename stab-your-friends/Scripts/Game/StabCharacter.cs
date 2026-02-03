@@ -22,6 +22,11 @@ public partial class StabCharacter : CharacterBody2D
 	private const float MaxMoveTime = 5.0f;
 	private const float WallAvoidanceDistance = 50f;
 
+	// Grapple constants
+	private const float GrappleRange = 80f;
+	private const float GrappleOrbitDistance = 55f;
+	private const float GrappleRotationSpeed = 3f;
+
 	public string CharacterId { get; set; } = "";
 	public string CharacterName { get; set; } = "";
 	public Color CharacterColor { get; set; } = Colors.White;
@@ -34,6 +39,17 @@ public partial class StabCharacter : CharacterBody2D
 	private Sprite2D _sprite = null!;
 	private float _scaleFactor = 1f;
 	private float _currentMoveSpeed;
+
+	// Grapple state
+	private bool _isGrappling;
+	private bool _isGrappled;
+	private StabCharacter? _grappleTarget;
+	private StabCharacter? _grappledBy;
+	private bool _action1WasPressed;
+	private float _grappleAngle;
+
+	// Reference to game world for character lookup
+	private GameWorld? _gameWorld;
 
 	// NPC AI state
 	private AiState _aiState = AiState.Pausing;
@@ -51,6 +67,9 @@ public partial class StabCharacter : CharacterBody2D
 		_currentMoveSpeed = BaseMoveSpeed;
 
 		_rng.Randomize();
+
+		// Get reference to GameWorld parent
+		_gameWorld = GetParent<GameWorld>();
 
 		UpdateVisuals();
 	}
@@ -147,22 +166,46 @@ public partial class StabCharacter : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
+		// Check if grapple target was freed
+		if (_isGrappling && !IsInstanceValid(_grappleTarget))
+		{
+			GD.Print($"[Grapple] {CharacterName}: Target was freed, clearing grapple state");
+			ClearGrappleState();
+		}
+		if (_isGrappled && !IsInstanceValid(_grappledBy))
+		{
+			GD.Print($"[Grapple] {CharacterName}: Grappler was freed, clearing grappled state");
+			ClearGrappledState();
+		}
+
+		// If grappled, cannot move
+		if (_isGrappled)
+		{
+			Velocity = Vector2.Zero;
+			MoveAndSlide();
+			return;
+		}
+
 		if (IsNpc)
 		{
 			ProcessNpcAi((float)delta);
 		}
 		else
 		{
-			ProcessPlayerInput();
+			ProcessPlayerInput((float)delta);
 		}
 
-		MoveAndSlide();
+		// Only call MoveAndSlide if not grappling (grappling uses direct position)
+		if (!_isGrappling)
+		{
+			MoveAndSlide();
+		}
 
 		// Check if NPC hit a wall and needs to change direction
 		CheckWallCollision();
 	}
 
-	private void ProcessPlayerInput()
+	private void ProcessPlayerInput(float delta)
 	{
 		if (_controller == null)
 		{
@@ -171,19 +214,12 @@ public partial class StabCharacter : CharacterBody2D
 		}
 
 		var input = _controller.CurrentInput;
-		Vector2 inputVector = new Vector2(input.Movement.X, input.Movement.Y);
-		float inputMag = inputVector.Length();
-		float playerspeed = _currentMoveSpeed;
-		if (inputMag > 0.6f)
-		{
-			playerspeed += _currentMoveSpeed * (((inputMag > 1 ) ? 1 : inputMag) - 0.6f) / 0.4f;
 
-		}
+		// Handle action button toggle (detect press, not hold)
+		bool action1Pressed = input.Action1 && !_action1WasPressed;
+		_action1WasPressed = input.Action1;
 
-		Velocity = new Vector2(input.Movement.X, input.Movement.Y).Normalized() * playerspeed;
-
-		// Handle action buttons
-		if (input.Action1)
+		if (action1Pressed)
 		{
 			OnAction1();
 		}
@@ -191,6 +227,46 @@ public partial class StabCharacter : CharacterBody2D
 		{
 			OnAction2();
 		}
+
+		// Grappling movement - orbit around target
+		if (_isGrappling && _grappleTarget != null)
+		{
+			Vector2 inputVector = new Vector2(input.Movement.X, input.Movement.Y);
+
+			// Use horizontal input to rotate around target
+			float rotationInput = inputVector.X;
+			float oldAngle = _grappleAngle;
+			_grappleAngle += rotationInput * delta * GrappleRotationSpeed;
+
+			// Position self at fixed distance from target
+			var offset = new Vector2(
+				Mathf.Cos(_grappleAngle),
+				Mathf.Sin(_grappleAngle)
+			) * GrappleOrbitDistance * _scaleFactor;
+
+			Vector2 newPosition = _grappleTarget.Position + offset;
+
+			// Log occasionally (every ~60 frames worth of significant movement)
+			if (Mathf.Abs(rotationInput) > 0.1f)
+			{
+				GD.Print($"[Grapple] {CharacterName}: Orbiting {_grappleTarget.CharacterName} - angle={Mathf.RadToDeg(_grappleAngle):F1}°, input={rotationInput:F2}");
+			}
+
+			Position = newPosition;
+			Velocity = Vector2.Zero;
+			return;
+		}
+
+		// Normal movement
+		Vector2 moveInput = new Vector2(input.Movement.X, input.Movement.Y);
+		float inputMag = moveInput.Length();
+		float playerspeed = _currentMoveSpeed;
+		if (inputMag > 0.6f)
+		{
+			playerspeed += _currentMoveSpeed * (((inputMag > 1 ) ? 1 : inputMag) - 0.6f) / 0.4f;
+		}
+
+		Velocity = moveInput.Normalized() * playerspeed;
 	}
 
 	private void ProcessNpcAi(float delta)
@@ -285,8 +361,174 @@ public partial class StabCharacter : CharacterBody2D
 
 	private void OnAction1()
 	{
-		// Primary action (e.g., attack/stab)
-		// TODO: Implement game-specific action
+		GD.Print($"[Grapple] {CharacterName}: Action1 pressed (isGrappled={_isGrappled}, isGrappling={_isGrappling})");
+
+		// Can't act while grappled
+		if (_isGrappled)
+		{
+			GD.Print($"[Grapple] {CharacterName}: Cannot act - currently grappled by {_grappledBy?.CharacterName ?? "unknown"}");
+			return;
+		}
+
+		if (_isGrappling)
+		{
+			ReleaseGrapple();
+		}
+		else
+		{
+			TryStartGrapple();
+		}
+	}
+
+	private void TryStartGrapple()
+	{
+		GD.Print($"[Grapple] {CharacterName}: Attempting to find grapple target at position {Position}");
+		var target = FindGrappleTarget();
+		if (target != null)
+		{
+			GD.Print($"[Grapple] {CharacterName}: Found target {target.CharacterName} at position {target.Position}");
+			StartGrapple(target);
+		}
+		else
+		{
+			GD.Print($"[Grapple] {CharacterName}: No valid target found within range {GrappleRange * _scaleFactor}");
+		}
+	}
+
+	private StabCharacter? FindGrappleTarget()
+	{
+		if (_gameWorld == null)
+		{
+			GD.Print($"[Grapple] {CharacterName}: FindGrappleTarget - GameWorld is null!");
+			return null;
+		}
+
+		float scaledRange = GrappleRange * _scaleFactor;
+		var nearbyCharacters = _gameWorld.GetNearbyCharacters(Position, scaledRange);
+		GD.Print($"[Grapple] {CharacterName}: Found {nearbyCharacters.Count} characters within range {scaledRange}");
+
+		StabCharacter? closestPlayer = null;
+		StabCharacter? closestNpc = null;
+		float closestPlayerDist = float.MaxValue;
+		float closestNpcDist = float.MaxValue;
+
+		foreach (var character in nearbyCharacters)
+		{
+			// Skip self
+			if (character == this)
+			{
+				GD.Print($"[Grapple] {CharacterName}: Skipping self");
+				continue;
+			}
+
+			// Skip characters already being grappled
+			if (character._isGrappled)
+			{
+				GD.Print($"[Grapple] {CharacterName}: Skipping {character.CharacterName} - already grappled");
+				continue;
+			}
+
+			float distance = Position.DistanceTo(character.Position);
+			GD.Print($"[Grapple] {CharacterName}: Checking {character.CharacterName} - distance={distance:F1}, isNpc={character.IsNpc}");
+
+			if (!character.IsNpc)
+			{
+				// Player-controlled character
+				if (distance < closestPlayerDist)
+				{
+					closestPlayerDist = distance;
+					closestPlayer = character;
+					GD.Print($"[Grapple] {CharacterName}: {character.CharacterName} is new closest player (dist={distance:F1})");
+				}
+			}
+			else
+			{
+				// NPC
+				if (distance < closestNpcDist)
+				{
+					closestNpcDist = distance;
+					closestNpc = character;
+					GD.Print($"[Grapple] {CharacterName}: {character.CharacterName} is new closest NPC (dist={distance:F1})");
+				}
+			}
+		}
+
+		// Prioritize player-controlled targets
+		if (closestPlayer != null)
+		{
+			GD.Print($"[Grapple] {CharacterName}: Selected player target {closestPlayer.CharacterName}");
+			return closestPlayer;
+		}
+
+		if (closestNpc != null)
+		{
+			GD.Print($"[Grapple] {CharacterName}: No players in range, selected NPC target {closestNpc.CharacterName}");
+			return closestNpc;
+		}
+
+		GD.Print($"[Grapple] {CharacterName}: No valid targets found");
+		return null;
+	}
+
+	private void StartGrapple(StabCharacter target)
+	{
+		_isGrappling = true;
+		_grappleTarget = target;
+
+		// Calculate initial angle from target to self
+		Vector2 toSelf = Position - target.Position;
+		_grappleAngle = Mathf.Atan2(toSelf.Y, toSelf.X);
+
+		GD.Print($"[Grapple] {CharacterName}: Starting grapple on {target.CharacterName}");
+		GD.Print($"[Grapple] {CharacterName}: Initial angle = {Mathf.RadToDeg(_grappleAngle):F1} degrees");
+		GD.Print($"[Grapple] {CharacterName}: Orbit distance = {GrappleOrbitDistance * _scaleFactor}");
+
+		// Tell target they're being grappled
+		target.OnGrappled(this);
+
+		GD.Print($"[Grapple] === {CharacterName} GRAPPLED {target.CharacterName} ===");
+	}
+
+	private void ReleaseGrapple()
+	{
+		GD.Print($"[Grapple] {CharacterName}: Releasing grapple");
+		if (_grappleTarget != null && IsInstanceValid(_grappleTarget))
+		{
+			GD.Print($"[Grapple] === {CharacterName} RELEASED {_grappleTarget.CharacterName} ===");
+			_grappleTarget.OnReleased();
+		}
+		else
+		{
+			GD.Print($"[Grapple] {CharacterName}: No valid target to release");
+		}
+		ClearGrappleState();
+	}
+
+	private void OnGrappled(StabCharacter grappler)
+	{
+		GD.Print($"[Grapple] {CharacterName}: Being grappled by {grappler.CharacterName}");
+		_isGrappled = true;
+		_grappledBy = grappler;
+	}
+
+	private void OnReleased()
+	{
+		GD.Print($"[Grapple] {CharacterName}: Released from grapple");
+		ClearGrappledState();
+	}
+
+	private void ClearGrappleState()
+	{
+		GD.Print($"[Grapple] {CharacterName}: Clearing grapple state (was grappling: {_grappleTarget?.CharacterName ?? "none"})");
+		_isGrappling = false;
+		_grappleTarget = null;
+	}
+
+	private void ClearGrappledState()
+	{
+		GD.Print($"[Grapple] {CharacterName}: Clearing grappled state (was grappled by: {_grappledBy?.CharacterName ?? "none"})");
+		_isGrappled = false;
+		_grappledBy = null;
 	}
 
 	private void OnAction2()
@@ -302,5 +544,28 @@ public partial class StabCharacter : CharacterBody2D
 	{
 		GD.Print($"{CharacterName} is stabbing!");
 		// TODO: Implement stab animation/effect
+	}
+
+	/// <summary>
+	/// Clean up grapple state before being removed from the game.
+	/// Call this before QueueFree() to properly release any grapple relationships.
+	/// </summary>
+	public void CleanupGrapple()
+	{
+		GD.Print($"[Grapple] {CharacterName}: CleanupGrapple called (isGrappling={_isGrappling}, isGrappled={_isGrappled})");
+
+		// If we're grappling someone, release them
+		if (_isGrappling)
+		{
+			GD.Print($"[Grapple] {CharacterName}: Cleaning up - releasing grapple on {_grappleTarget?.CharacterName ?? "unknown"}");
+			ReleaseGrapple();
+		}
+
+		// If we're being grappled, the grappler will detect via IsInstanceValid check
+		// and clean up their own state in _PhysicsProcess
+		if (_isGrappled)
+		{
+			GD.Print($"[Grapple] {CharacterName}: Cleaning up - was being grappled by {_grappledBy?.CharacterName ?? "unknown"}");
+		}
 	}
 }

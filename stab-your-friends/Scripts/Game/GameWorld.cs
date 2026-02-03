@@ -284,6 +284,7 @@ public partial class GameWorld : Node2D
     {
         if (_characters.TryGetValue(controller.PlayerId, out var character))
         {
+            character.CleanupGrapple();
             character.QueueFree();
             _characters.Remove(controller.PlayerId);
             GD.Print($"Removed character: {character.CharacterName}");
@@ -305,10 +306,33 @@ public partial class GameWorld : Node2D
     {
         if (_characters.TryGetValue(npcId, out var character))
         {
+            character.CleanupGrapple();
             character.QueueFree();
             _characters.Remove(npcId);
             GD.Print($"Removed NPC: {character.CharacterName}");
         }
+    }
+
+    /// <summary>
+    /// Get all characters within a radius of a position
+    /// </summary>
+    public List<StabCharacter> GetNearbyCharacters(Vector2 position, float radius)
+    {
+        var result = new List<StabCharacter>();
+        float radiusSquared = radius * radius;
+
+        foreach (var character in _characters.Values)
+        {
+            if (!IsInstanceValid(character)) continue;
+
+            float distSquared = (character.Position - position).LengthSquared();
+            if (distSquared <= radiusSquared)
+            {
+                result.Add(character);
+            }
+        }
+
+        return result;
     }
 
     public override void _ExitTree()
