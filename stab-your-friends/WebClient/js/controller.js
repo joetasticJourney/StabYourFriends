@@ -20,8 +20,8 @@ export class Controller {
 
         // Shake detection
         this.onShake = null;
-        this.shakeThreshold = 12; // Acceleration threshold for shake detection
-        this.shakeCooldown = 500; // Minimum ms between shake events
+        this.shakeThreshold = 17; // Acceleration threshold for shake detection
+        this.shakeCooldown = 200; // Minimum ms between shake events
         this.lastShakeTime = 0;
         this.lastAcceleration = { x: 0, y: 0, z: 0 };
         this.motionListenerActive = false;
@@ -282,9 +282,11 @@ export class Controller {
         const y = acceleration.y || 0;
         const z = acceleration.z || 0;
 
-        const deltaX = Math.abs(x - this.lastAcceleration.x);
+        // Only detect Y-axis (up/down motion when phone held upright)
+        // This ignores rotation and horizontal movement
+        const deltaX = 0;
         const deltaY = Math.abs(y - this.lastAcceleration.y);
-        const deltaZ = Math.abs(z - this.lastAcceleration.z);
+        const deltaZ = 0;
 
         const totalDelta = deltaX + deltaY + deltaZ;
 

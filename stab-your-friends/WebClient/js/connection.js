@@ -18,7 +18,7 @@ export class Connection {
                 return;
             }
 
-            const url = `ws://${ip}:${port}`;
+            const url = `wss://${ip}:${port}`;
             console.log('Attempting to connect to:', url);
 
             try {

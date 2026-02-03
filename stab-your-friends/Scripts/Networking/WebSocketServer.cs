@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,11 +12,12 @@ namespace StabYourFriends.Networking;
 
 public partial class WebSocketServer : Node
 {
-    [Export] public int Port { get; set; } = 9080;
+    [Export] public int Port { get; set; } = 9443;
 
     private TcpServer _tcpServer = new();
     private readonly List<ClientConnection> _clients = new();
     private readonly List<ClientConnection> _pendingClients = new();
+    private readonly List<PendingTlsConnection> _pendingTls = new();
 
     public event Action<ClientConnection>? ClientConnected;
     public event Action<ClientConnection>? ClientDisconnected;
@@ -22,15 +25,36 @@ public partial class WebSocketServer : Node
 
     public IReadOnlyList<ClientConnection> Clients => _clients;
 
+    private class PendingTlsConnection
+    {
+        public StreamPeerTcp TcpPeer { get; }
+        public StreamPeerTls? TlsPeer { get; set; }
+        public TlsState State { get; set; } = TlsState.Accepting;
+
+        public PendingTlsConnection(StreamPeerTcp tcpPeer)
+        {
+            TcpPeer = tcpPeer;
+        }
+    }
+
+    private enum TlsState
+    {
+        Accepting,
+        Handshaking,
+        Ready,
+        Error
+    }
+
     public override void _Ready()
     {
         GD.Print("=== WebSocketServer _Ready ===");
+        TlsCertificateManager.EnsureCertificateExists();
         StartServer();
     }
 
     public void StartServer()
     {
-        GD.Print($"=== Starting server on port {Port} ===");
+        GD.Print($"=== Starting WSS server on port {Port} ===");
         var error = _tcpServer.Listen((ushort)Port, "*");
         if (error != Error.Ok)
         {
@@ -38,7 +62,7 @@ public partial class WebSocketServer : Node
             return;
         }
 
-        GD.Print($"WebSocket server listening on port {Port}");
+        GD.Print($"WebSocket Secure (WSS) server listening on port {Port}");
         GD.Print($"Local IP: {GetLocalIpAddress()}");
         GD.Print("=== Server started successfully ===");
     }
@@ -55,6 +79,7 @@ public partial class WebSocketServer : Node
         }
         _clients.Clear();
         _pendingClients.Clear();
+        _pendingTls.Clear();
         _tcpServer.Stop();
         GD.Print("WebSocket server stopped");
     }
@@ -69,13 +94,16 @@ public partial class WebSocketServer : Node
             var tcpPeer = _tcpServer.TakeConnection();
             if (tcpPeer != null)
             {
-                GD.Print("New TCP connection, starting WebSocket handshake...");
-                var client = new ClientConnection(tcpPeer);
-                client.HandshakeCompleted += OnHandshakeCompleted;
-                client.MessageReceived += OnClientMessage;
-                client.Disconnected += OnClientDisconnected;
-                _pendingClients.Add(client);
+                GD.Print("New TCP connection, starting TLS handshake...");
+                _pendingTls.Add(new PendingTlsConnection(tcpPeer));
             }
+        }
+
+        // Process TLS handshakes
+        for (int i = _pendingTls.Count - 1; i >= 0; i--)
+        {
+            var pending = _pendingTls[i];
+            ProcessTlsHandshake(pending, i);
         }
 
         // Poll pending clients (waiting for WebSocket handshake)
@@ -97,6 +125,67 @@ public partial class WebSocketServer : Node
         foreach (var client in _clients.ToList())
         {
             client.Poll();
+        }
+    }
+
+    private void ProcessTlsHandshake(PendingTlsConnection pending, int index)
+    {
+        pending.TcpPeer.Poll();
+
+        switch (pending.State)
+        {
+            case TlsState.Accepting:
+                var tcpStatus = pending.TcpPeer.GetStatus();
+                if (tcpStatus == StreamPeerTcp.Status.Connected)
+                {
+                    // Start TLS handshake
+                    pending.TlsPeer = new StreamPeerTls();
+                    var tlsOptions = TlsCertificateManager.GetServerTlsOptions();
+                    var err = pending.TlsPeer.AcceptStream(pending.TcpPeer, tlsOptions);
+                    if (err != Error.Ok)
+                    {
+                        GD.PrintErr($"TLS accept failed: {err}");
+                        pending.State = TlsState.Error;
+                    }
+                    else
+                    {
+                        pending.State = TlsState.Handshaking;
+                    }
+                }
+                else if (tcpStatus == StreamPeerTcp.Status.Error || tcpStatus == StreamPeerTcp.Status.None)
+                {
+                    pending.State = TlsState.Error;
+                }
+                break;
+
+            case TlsState.Handshaking:
+                pending.TlsPeer!.Poll();
+                var tlsStatus = pending.TlsPeer.GetStatus();
+                if (tlsStatus == StreamPeerTls.Status.Connected)
+                {
+                    pending.State = TlsState.Ready;
+                }
+                else if (tlsStatus == StreamPeerTls.Status.Error || tlsStatus == StreamPeerTls.Status.ErrorHostnameMismatch)
+                {
+                    GD.PrintErr("TLS handshake failed");
+                    pending.State = TlsState.Error;
+                }
+                break;
+
+            case TlsState.Ready:
+                // TLS is ready, create WebSocket client connection
+                GD.Print("TLS handshake complete, starting WebSocket handshake...");
+                var client = new ClientConnection(pending.TlsPeer!);
+                client.HandshakeCompleted += OnHandshakeCompleted;
+                client.MessageReceived += OnClientMessage;
+                client.Disconnected += OnClientDisconnected;
+                _pendingClients.Add(client);
+                _pendingTls.RemoveAt(index);
+                return;
+
+            case TlsState.Error:
+                _pendingTls.RemoveAt(index);
+                return;
         }
     }
 

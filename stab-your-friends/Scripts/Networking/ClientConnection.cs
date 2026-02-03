@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using Godot;
 using StabYourFriends.Networking.Messages;
@@ -18,16 +20,33 @@ public class ClientConnection
 
     private bool _handshakeComplete;
 
+    /// <summary>
+    /// Create a client connection from a raw TCP peer (no TLS).
+    /// </summary>
     public ClientConnection(StreamPeerTcp tcpPeer)
     {
         Id = Guid.NewGuid().ToString("N")[..8];
         Peer = new WebSocketPeer();
 
-        // Set supported protocols if needed
         var err = Peer.AcceptStream(tcpPeer);
         if (err != Error.Ok)
         {
             GD.PrintErr($"Failed to accept stream: {err}");
+        }
+    }
+
+    /// <summary>
+    /// Create a client connection from a TLS-wrapped stream (for WSS).
+    /// </summary>
+    public ClientConnection(StreamPeer stream)
+    {
+        Id = Guid.NewGuid().ToString("N")[..8];
+        Peer = new WebSocketPeer();
+
+        var err = Peer.AcceptStream(stream);
+        if (err != Error.Ok)
+        {
+            GD.PrintErr($"Failed to accept TLS stream: {err}");
         }
     }
 

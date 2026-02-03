@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -26,7 +28,7 @@ public partial class GameManager : Node
 
     public IReadOnlyDictionary<string, PlayerController> Players => _players;
     public string ServerIpAddress => WebSocketServer.GetLocalIpAddress();
-    public int ServerPort => _server?.Port ?? 9080;
+    public int ServerPort => _server?.Port ?? 9443;
     public string CurrentGameMode { get; private set; } = "";
     public bool IsGameInProgress { get; private set; }
 

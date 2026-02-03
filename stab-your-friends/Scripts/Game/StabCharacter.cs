@@ -1,3 +1,5 @@
+#nullable enable
+
 using Godot;
 using StabYourFriends.Controllers;
 

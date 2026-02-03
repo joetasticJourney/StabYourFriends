@@ -75,7 +75,7 @@ class App {
 
             const name = document.getElementById('player-name').value.trim();
             const ip = document.getElementById('server-ip').value.trim();
-            const port = document.getElementById('server-port').value || '9080';
+            const port = document.getElementById('server-port').value || '9443';
 
             if (!name || !ip) {
                 errorEl.textContent = 'Please enter your name and server IP';

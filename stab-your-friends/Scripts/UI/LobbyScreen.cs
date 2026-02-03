@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Collections.Generic;
 using Godot;
 using StabYourFriends.Autoload;
@@ -42,8 +44,8 @@ public partial class LobbyScreen : Control
     private void GenerateQRCode()
     {
         var ip = GameManager.Instance.ServerIpAddress;
-        var port = 8080; // HTTP server port
-        var url = $"http://{ip}:{port}";
+        var port = 8443; // HTTPS server port
+        var url = $"https://{ip}:{port}";
 
         _urlLabel.Text = url;
 
