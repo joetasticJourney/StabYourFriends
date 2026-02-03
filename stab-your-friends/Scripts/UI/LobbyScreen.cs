@@ -10,8 +10,8 @@ public partial class LobbyScreen : Control
     [Export] public PackedScene PlayerSlotScene { get; set; } = null!;
     [Export] public PackedScene GameModeMenuScene { get; set; } = null!;
 
-    private Label _ipLabel = null!;
-    private Label _portLabel = null!;
+    private TextureRect _qrCode = null!;
+    private Label _urlLabel = null!;
     private GridContainer _playerGrid = null!;
     private Button _startButton = null!;
     private Label _statusLabel = null!;
@@ -21,15 +21,15 @@ public partial class LobbyScreen : Control
 
     public override void _Ready()
     {
-        _ipLabel = GetNode<Label>("%IpLabel");
-        _portLabel = GetNode<Label>("%PortLabel");
+        _qrCode = GetNode<TextureRect>("%QRCode");
+        _urlLabel = GetNode<Label>("%UrlLabel");
         _playerGrid = GetNode<GridContainer>("%PlayerGrid");
         _startButton = GetNode<Button>("%StartButton");
         _statusLabel = GetNode<Label>("%StatusLabel");
 
         _startButton.Pressed += OnStartPressed;
 
-        UpdateServerInfo();
+        GenerateQRCode();
 
         GameManager.Instance.LobbyStateChanged += OnLobbyStateChanged;
         GameManager.Instance.PlayerJoined += OnPlayerJoined;
@@ -39,10 +39,17 @@ public partial class LobbyScreen : Control
         UpdateUI();
     }
 
-    private void UpdateServerInfo()
+    private void GenerateQRCode()
     {
-        _ipLabel.Text = $"IP: {GameManager.Instance.ServerIpAddress}";
-        _portLabel.Text = $"Port: {GameManager.Instance.ServerPort}";
+        var ip = GameManager.Instance.ServerIpAddress;
+        var port = 8080; // HTTP server port
+        var url = $"http://{ip}:{port}";
+
+        _urlLabel.Text = url;
+
+        // Generate QR code
+        var qrTexture = QRCodeGenerator.Generate(url, 8);
+        _qrCode.Texture = qrTexture;
     }
 
     private void OnLobbyStateChanged()
@@ -151,7 +158,7 @@ public partial class LobbyScreen : Control
     private void OnGameStarted(string gameMode)
     {
         // Load the game world scene
-        GetTree().ChangeSceneToFile("res://Scenes/Game/GameWorld.tscn");
+        GetTree().ChangeSceneToFile("res://Scenes/Game/SYFScene.tscn");
     }
 
     public override void _ExitTree()

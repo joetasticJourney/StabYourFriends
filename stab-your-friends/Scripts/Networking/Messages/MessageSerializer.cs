@@ -24,6 +24,7 @@ public static class MessageSerializer
             JoinMessage m => JsonSerializer.Serialize(m, Options),
             InputMessage m => JsonSerializer.Serialize(m, Options),
             ReadyMessage m => JsonSerializer.Serialize(m, Options),
+            ShakeMessage m => JsonSerializer.Serialize(m, Options),
             _ => throw new ArgumentException($"Unknown message type: {message.GetType()}")
         };
     }
@@ -42,6 +43,7 @@ public static class MessageSerializer
                 "join" => JsonSerializer.Deserialize<JoinMessage>(json, Options),
                 "input" => JsonSerializer.Deserialize<InputMessage>(json, Options),
                 "ready" => JsonSerializer.Deserialize<ReadyMessage>(json, Options),
+                "shake" => JsonSerializer.Deserialize<ShakeMessage>(json, Options),
                 "welcome" => JsonSerializer.Deserialize<WelcomeMessage>(json, Options),
                 "lobbyState" => JsonSerializer.Deserialize<LobbyStateMessage>(json, Options),
                 "error" => JsonSerializer.Deserialize<ErrorMessage>(json, Options),

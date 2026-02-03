@@ -17,6 +17,18 @@ export class Controller {
         this.onInputChange = null;
         this.inputSendInterval = null;
         this.inputSendRate = 1000 / 30; // 30Hz
+
+        // Shake detection
+        this.onShake = null;
+        this.shakeThreshold = 12; // Acceleration threshold for shake detection
+        this.shakeCooldown = 500; // Minimum ms between shake events
+        this.lastShakeTime = 0;
+        this.lastAcceleration = { x: 0, y: 0, z: 0 };
+        this.motionListenerActive = false;
+        this.debugMotion = false; // Set to true to log motion values
+
+        // Audio context for shake sound
+        this.audioContext = null;
     }
 
     init() {
@@ -24,9 +36,12 @@ export class Controller {
         this.touchpadIndicator = document.getElementById('touchpad-indicator');
         this.action1Btn = document.getElementById('action1-btn');
         this.action2Btn = document.getElementById('action2-btn');
+        this.stabBtn = document.getElementById('stab-btn');
 
         this.setupTouchpad();
         this.setupButtons();
+        this.setupStabButton();
+        this.setupShakeDetection();
     }
 
     setupTouchpad() {
@@ -108,8 +123,9 @@ export class Controller {
         // Normalize to -1 to 1 range based on half the touchpad size
         const maxRadius = Math.min(this.touchpadRect.width, this.touchpadRect.height) / 2;
 
-        this.moveX = Math.max(-1, Math.min(1, dx / maxRadius));
-        this.moveY = Math.max(-1, Math.min(1, dy / maxRadius));
+        // Swap X and Y, invert horizontal: touchpad right -> game up, touchpad down -> game right
+        this.moveX = Math.max(-1, Math.min(1, dy / maxRadius));
+        this.moveY = Math.max(-1, Math.min(1, -dx / maxRadius));
 
         // Update indicator position (clamp to touchpad bounds)
         const indicatorX = Math.max(-maxRadius, Math.min(maxRadius, dx));
@@ -182,6 +198,161 @@ export class Controller {
             element.classList.remove('pressed');
             onRelease();
         });
+    }
+
+    setupStabButton() {
+        if (!this.stabBtn) return;
+
+        const onStab = () => {
+            this.stabBtn.classList.add('pressed');
+            this.triggerShake();
+            setTimeout(() => {
+                this.stabBtn.classList.remove('pressed');
+            }, 150);
+        };
+
+        this.stabBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            onStab();
+        }, { passive: false });
+
+        this.stabBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            onStab();
+        });
+    }
+
+    setupShakeDetection() {
+        console.log('Setting up shake detection...');
+
+        if (!window.DeviceMotionEvent) {
+            console.log('Device motion not supported');
+            return;
+        }
+
+        // Request permission for iOS 13+
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+            console.log('iOS detected - will request permission on user interaction');
+
+            const requestPermission = async () => {
+                try {
+                    const response = await DeviceMotionEvent.requestPermission();
+                    console.log('DeviceMotion permission response:', response);
+                    if (response === 'granted') {
+                        this.addMotionListener();
+                    }
+                } catch (err) {
+                    console.error('DeviceMotion permission error:', err);
+                }
+            };
+
+            // Listen for both click and touch events
+            const handler = () => {
+                requestPermission();
+                document.removeEventListener('click', handler);
+                document.removeEventListener('touchend', handler);
+            };
+
+            document.addEventListener('click', handler);
+            document.addEventListener('touchend', handler);
+        } else {
+            // Non-iOS devices
+            console.log('Non-iOS device - adding motion listener directly');
+            this.addMotionListener();
+        }
+    }
+
+    addMotionListener() {
+        console.log('Adding device motion listener');
+        this.motionListenerActive = true;
+
+        window.addEventListener('devicemotion', (event) => {
+            this.handleDeviceMotion(event);
+        });
+    }
+
+    handleDeviceMotion(event) {
+        // Try accelerationIncludingGravity first, fall back to acceleration
+        const acceleration = event.accelerationIncludingGravity || event.acceleration;
+        if (!acceleration || (acceleration.x === null && acceleration.y === null && acceleration.z === null)) {
+            return;
+        }
+
+        const x = acceleration.x || 0;
+        const y = acceleration.y || 0;
+        const z = acceleration.z || 0;
+
+        const deltaX = Math.abs(x - this.lastAcceleration.x);
+        const deltaY = Math.abs(y - this.lastAcceleration.y);
+        const deltaZ = Math.abs(z - this.lastAcceleration.z);
+
+        const totalDelta = deltaX + deltaY + deltaZ;
+
+        // Debug logging (enable with: app.controller.debugMotion = true)
+        if (this.debugMotion && totalDelta > 1) {
+            console.log(`Motion delta: ${totalDelta.toFixed(2)} (threshold: ${this.shakeThreshold})`);
+        }
+
+        if (totalDelta > this.shakeThreshold) {
+            const now = Date.now();
+            if (now - this.lastShakeTime > this.shakeCooldown) {
+                this.lastShakeTime = now;
+                console.log(`Shake triggered! Delta: ${totalDelta.toFixed(2)}`);
+                this.triggerShake();
+            }
+        }
+
+        this.lastAcceleration = { x, y, z };
+    }
+
+    // Manual trigger for testing (can be called from console: app.controller.testShake())
+    testShake() {
+        console.log('Manual shake test');
+        this.triggerShake();
+    }
+
+    triggerShake() {
+        console.log('Shake detected!');
+        this.playShakeSound();
+
+        if (this.onShake) {
+            this.onShake();
+        }
+    }
+
+    playShakeSound() {
+        // Create audio context on first use (must be after user interaction)
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        // Resume if suspended (browsers require user interaction)
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        // Create a short "whoosh" sound for shake
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        // Sweep frequency down for a "swoosh" effect
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(600, now);
+        oscillator.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+
+        // Quick attack, fast decay
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.3, now + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+        oscillator.start(now);
+        oscillator.stop(now + 0.15);
     }
 
     startSendingInput() {

@@ -22,11 +22,11 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 20
+theme_override_constants/separation = 15
 
 [node name="TitleContainer" type="VBoxContainer" parent="VBoxContainer"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 5
 
 [node name="Title" type="Label" parent="VBoxContainer/TitleContainer"]
 layout_mode = 2
@@ -36,31 +36,29 @@ horizontal_alignment = 1
 
 [node name="Subtitle" type="Label" parent="VBoxContainer/TitleContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "Local Multiplayer Lobby"
+theme_override_font_sizes/font_size = 16
+text = "Scan QR code with your phone to join!"
 horizontal_alignment = 1
 
-[node name="ServerInfo" type="HBoxContainer" parent="VBoxContainer"]
+[node name="QRContainer" type="VBoxContainer" parent="VBoxContainer"]
 layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 40
+theme_override_constants/separation = 10
 
-[node name="IpLabel" type="Label" parent="VBoxContainer/ServerInfo"]
+[node name="CenterContainer" type="CenterContainer" parent="VBoxContainer/QRContainer"]
+layout_mode = 2
+
+[node name="QRCode" type="TextureRect" parent="VBoxContainer/QRContainer/CenterContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 200)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="UrlLabel" type="Label" parent="VBoxContainer/QRContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "IP: 192.168.1.100"
-
-[node name="PortLabel" type="Label" parent="VBoxContainer/ServerInfo"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "Port: 9080"
-
-[node name="Instructions" type="Label" parent="VBoxContainer"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 14
-text = "Open the web controller on your phone browser and enter the IP address above to join!"
+theme_override_font_sizes/font_size = 18
+text = "http://192.168.1.100:8080"
 horizontal_alignment = 1
 
 [node name="PlayerGridContainer" type="CenterContainer" parent="VBoxContainer"]

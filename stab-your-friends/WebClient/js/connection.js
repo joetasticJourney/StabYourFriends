@@ -113,4 +113,10 @@ export class Connection {
             action2: action2
         });
     }
+
+    sendShake() {
+        this.send({
+            type: 'shake'
+        });
+    }
 }

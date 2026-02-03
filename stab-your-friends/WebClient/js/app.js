@@ -182,6 +182,9 @@ class App {
         this.controller.onInputChange = (moveX, moveY, action1, action2) => {
             this.connection.sendInput(moveX, moveY, action1, action2);
         };
+        this.controller.onShake = () => {
+            this.connection.sendShake();
+        };
         this.controller.startSendingInput();
     }
 

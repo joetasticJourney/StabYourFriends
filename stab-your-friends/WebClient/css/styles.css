@@ -256,8 +256,10 @@ html, body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     padding: 20px;
+    padding-top: 50px;
+    position: relative;
 }
 
 .touchpad {
@@ -321,7 +323,10 @@ html, body {
 }
 
 .touchpad-label {
-    margin-top: 15px;
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%) rotate(90deg);
     color: rgba(255, 255, 255, 0.4);
     font-size: 0.9rem;
     font-weight: bold;
@@ -333,7 +338,7 @@ html, body {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 40px;
+    gap: 20px;
     padding: 30px 20px;
 }
 
@@ -347,6 +352,13 @@ html, body {
     color: white;
     cursor: pointer;
     transition: transform 0.1s, box-shadow 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-btn span {
+    transform: rotate(90deg);
 }
 
 .action-btn.action1 {
@@ -357,6 +369,16 @@ html, body {
 .action-btn.action2 {
     background: linear-gradient(145deg, #2196f3, #1976d2);
     box-shadow: 0 6px 25px rgba(33, 150, 243, 0.5);
+}
+
+.action-btn.stab {
+    background: linear-gradient(145deg, #e94560, #c73e54);
+    box-shadow: 0 6px 25px rgba(233, 69, 96, 0.5);
+    font-size: 1rem;
+}
+
+.action-btn.stab.pressed {
+    box-shadow: 0 2px 15px rgba(233, 69, 96, 0.8);
 }
 
 .action-btn.pressed {

@@ -12,7 +12,7 @@ public partial class GameManager : Node
 {
     public static GameManager Instance { get; private set; } = null!;
 
-    [Export] public int MinPlayersToStart { get; set; } = 2;
+    [Export] public int MinPlayersToStart { get; set; } = 1;
 
     private WebSocketServer _server = null!;
     private HttpFileServer _httpServer = null!;
@@ -22,11 +22,13 @@ public partial class GameManager : Node
     public event Action<PlayerController>? PlayerJoined;
     public event Action<PlayerController>? PlayerLeft;
     public event Action<string>? GameStarted;
+    public event Action<PlayerController>? PlayerShake;
 
     public IReadOnlyDictionary<string, PlayerController> Players => _players;
     public string ServerIpAddress => WebSocketServer.GetLocalIpAddress();
     public int ServerPort => _server?.Port ?? 9080;
     public string CurrentGameMode { get; private set; } = "";
+    public bool IsGameInProgress { get; private set; }
 
     public bool CanStartGame => _players.Count >= MinPlayersToStart;
 
@@ -81,6 +83,9 @@ public partial class GameManager : Node
             case InputMessage inputMsg:
                 HandleInput(client, inputMsg);
                 break;
+            case ShakeMessage:
+                HandleShake(client);
+                break;
         }
     }
 
@@ -116,6 +121,12 @@ public partial class GameManager : Node
             PlayerColor = player.GetColorHex()
         });
 
+        // If game is already in progress, send GameStartMessage to switch to controller
+        if (IsGameInProgress)
+        {
+            client.Send(new GameStartMessage { GameMode = CurrentGameMode });
+        }
+
         PlayerJoined?.Invoke(player);
         BroadcastLobbyState();
     }
@@ -127,6 +138,15 @@ public partial class GameManager : Node
             player.CurrentInput.Movement = new Vector2(message.MoveX, message.MoveY);
             player.CurrentInput.Action1 = message.Action1;
             player.CurrentInput.Action2 = message.Action2;
+        }
+    }
+
+    private void HandleShake(ClientConnection client)
+    {
+        if (_players.TryGetValue(client.Id, out var player))
+        {
+            GD.Print($"Player {player.PlayerName} triggered shake!");
+            PlayerShake?.Invoke(player);
         }
     }
 
@@ -151,6 +171,8 @@ public partial class GameManager : Node
     {
         _players.Clear();
         PlayerController.ResetColorIndex();
+        CurrentGameMode = "";
+        IsGameInProgress = false;
         BroadcastLobbyState();
     }
 
@@ -163,6 +185,7 @@ public partial class GameManager : Node
         }
 
         CurrentGameMode = gameMode;
+        IsGameInProgress = true;
         GD.Print($"Starting game with mode: {gameMode}");
 
         // Notify all clients that game is starting

@@ -1,7 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://df1rw458ifvwx"]
+[gd_scene load_steps=6 format=3 uid="uid://cppg6t4jctxh"]
 
-[ext_resource type="Script" uid="uid://0ctoxof56c4k" path="res://Scripts/Game/GameWorld.cs" id="1_game_world"]
-[ext_resource type="PackedScene" uid="uid://b7xqkhm8yf7ep" path="res://Scenes/Game/PlayerCharacter.tscn" id="2_player_character"]
+[ext_resource type="Script" path="res://Scripts/Game/GameWorld.cs" id="1_game_world"]
+[ext_resource type="PackedScene" uid="uid://depd63rjly6fc" path="res://Scenes/Game/StabCharacter.tscn" id="2_stab_character"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_top"]
 size = Vector2(1920, 20)
@@ -11,7 +11,7 @@ size = Vector2(20, 1080)
 
 [node name="GameWorld" type="Node2D"]
 script = ExtResource("1_game_world")
-PlayerCharacterScene = ExtResource("2_player_character")
+StabCharacterScene = ExtResource("2_stab_character")
 
 [node name="Background" type="ColorRect" parent="."]
 offset_right = 1920.0
@@ -35,7 +35,7 @@ shape = SubResource("RectangleShape2D_top")
 [node name="LeftWall" type="StaticBody2D" parent="Walls"]
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/LeftWall"]
-position = Vector2(37, 802)
+position = Vector2(-10, 540)
 shape = SubResource("RectangleShape2D_left")
 
 [node name="RightWall" type="StaticBody2D" parent="Walls"]

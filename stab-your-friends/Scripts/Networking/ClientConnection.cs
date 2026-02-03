@@ -49,7 +49,6 @@ public class ClientConnection
             {
                 var packet = Peer.GetPacket();
                 var json = System.Text.Encoding.UTF8.GetString(packet);
-                GD.Print($"Received: {json}");
                 var message = MessageSerializer.Deserialize(json);
                 if (message != null)
                 {
@@ -68,7 +67,6 @@ public class ClientConnection
         if (!IsConnected) return;
 
         var json = MessageSerializer.Serialize(message);
-        GD.Print($"Sending: {json}");
         Peer.SendText(json);
     }
 
