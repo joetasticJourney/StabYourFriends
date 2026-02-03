@@ -27,10 +27,27 @@ public partial class StabCharacter : CharacterBody2D
 	private const float GrappleOrbitDistance = 55f;
 	private const float GrappleRotationSpeed = 3f;
 
+	// Health and death constants
+	private const int MaxHealth = 10;
+	private const int StabDamage = 1;
+	private const float BodyFadeDelay = 5f;
+	private const float BloodFadeDelay = 10f;
+	private const float FadeDuration = 1f;
+	private const float BloodPoolMaxScale = 2f;
+	private const float BloodPoolExpandDuration = 0.5f;
+
+	// Stab particle constants
+	private const float StabParticleDistance = BaseRadius * 10f;
+	private const float StabParticleSpreadAngle = Mathf.Pi / 4f; // 45 degrees
+	private const float StabParticleLifetime = 0.6f;
+	private const int StabParticleCount = 120;
+
 	public string CharacterId { get; set; } = "";
 	public string CharacterName { get; set; } = "";
 	public Color CharacterColor { get; set; } = Colors.White;
 	public bool IsNpc { get; private set; }
+	public int Health { get; private set; } = MaxHealth;
+	public bool IsDead { get; private set; }
 
 	private PlayerController? _controller;
 	private ColorRect _colorRect = null!;
@@ -50,6 +67,15 @@ public partial class StabCharacter : CharacterBody2D
 
 	// Reference to game world for character lookup
 	private GameWorld? _gameWorld;
+
+	// Death state
+	private float _deathTimer;
+	private float _bloodTimer;
+	private bool _bodyFading;
+	private bool _bloodFading;
+	private ColorRect? _skullOverlay;
+	private ColorRect? _bloodPool;
+	private float _bloodExpandTimer;
 
 	// NPC AI state
 	private AiState _aiState = AiState.Pausing;
@@ -166,6 +192,13 @@ public partial class StabCharacter : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
+		// Handle death state
+		if (IsDead)
+		{
+			ProcessDeathState((float)delta);
+			return;
+		}
+
 		// Check if grapple target was freed
 		if (_isGrappling && !IsInstanceValid(_grappleTarget))
 		{
@@ -203,6 +236,66 @@ public partial class StabCharacter : CharacterBody2D
 
 		// Check if NPC hit a wall and needs to change direction
 		CheckWallCollision();
+	}
+
+	private void ProcessDeathState(float delta)
+	{
+		// Expand blood pool
+		if (_bloodPool != null && _bloodExpandTimer < BloodPoolExpandDuration)
+		{
+			_bloodExpandTimer += delta;
+			float t = Mathf.Min(_bloodExpandTimer / BloodPoolExpandDuration, 1f);
+			float scale = Mathf.Lerp(0.1f, BloodPoolMaxScale, t) * _scaleFactor;
+			_bloodPool.Scale = new Vector2(scale, scale);
+		}
+
+		// Body fade timer
+		_deathTimer += delta;
+		if (!_bodyFading && _deathTimer >= BodyFadeDelay)
+		{
+			_bodyFading = true;
+		}
+
+		// Fade body
+		if (_bodyFading)
+		{
+			float fadeProgress = (_deathTimer - BodyFadeDelay) / FadeDuration;
+			if (fadeProgress >= 1f)
+			{
+				if (_sprite != null) _sprite.Visible = false;
+				if (_nameLabel != null) _nameLabel.Visible = false;
+				if (_skullOverlay != null) _skullOverlay.Visible = false;
+			}
+			else
+			{
+				float alpha = 1f - fadeProgress;
+				if (_sprite != null) _sprite.Modulate = new Color(1, 1, 1, alpha);
+				if (_nameLabel != null) _nameLabel.Modulate = new Color(1, 1, 1, alpha);
+				if (_skullOverlay != null) _skullOverlay.Modulate = new Color(1, 1, 1, alpha * 0.7f);
+			}
+		}
+
+		// Blood fade timer
+		_bloodTimer += delta;
+		if (!_bloodFading && _bloodTimer >= BloodFadeDelay)
+		{
+			_bloodFading = true;
+		}
+
+		// Fade blood
+		if (_bloodFading && _bloodPool != null)
+		{
+			float fadeProgress = (_bloodTimer - BloodFadeDelay) / FadeDuration;
+			if (fadeProgress >= 1f)
+			{
+				_bloodPool.Visible = false;
+			}
+			else
+			{
+				float alpha = 1f - fadeProgress;
+				_bloodPool.Modulate = new Color(1, 1, 1, alpha);
+			}
+		}
 	}
 
 	private void ProcessPlayerInput(float delta)
@@ -383,7 +476,14 @@ public partial class StabCharacter : CharacterBody2D
 
 	private void OnAction1()
 	{
-		GD.Print($"[Grapple] {CharacterName}: Action1 pressed (isGrappled={_isGrappled}, isGrappling={_isGrappling})");
+		GD.Print($"[Grapple] {CharacterName}: Action1 pressed (isGrappled={_isGrappled}, isGrappling={_isGrappling}, isDead={IsDead})");
+
+		// Can't act while dead
+		if (IsDead)
+		{
+			GD.Print($"[Grapple] {CharacterName}: Cannot act - dead");
+			return;
+		}
 
 		// Can't act while grappled
 		if (_isGrappled)
@@ -440,6 +540,13 @@ public partial class StabCharacter : CharacterBody2D
 			if (character == this)
 			{
 				GD.Print($"[Grapple] {CharacterName}: Skipping self");
+				continue;
+			}
+
+			// Skip dead characters
+			if (character.IsDead)
+			{
+				GD.Print($"[Grapple] {CharacterName}: Skipping {character.CharacterName} - dead");
 				continue;
 			}
 
@@ -564,8 +671,174 @@ public partial class StabCharacter : CharacterBody2D
 	/// </summary>
 	public void OnPlayerStab()
 	{
-		GD.Print($"{CharacterName} is stabbing!");
-		// TODO: Implement stab animation/effect
+		if (IsDead)
+		{
+			GD.Print($"[Stab] {CharacterName} cannot stab - dead");
+			return;
+		}
+
+		GD.Print($"[Stab] {CharacterName} is stabbing!");
+
+		// If grappling someone, deal damage and spawn particles
+		if (_isGrappling && _grappleTarget != null && IsInstanceValid(_grappleTarget))
+		{
+			GD.Print($"[Stab] {CharacterName} stabs {_grappleTarget.CharacterName} for {StabDamage} damage!");
+
+			// Spawn stab particle effect at the grappled target
+			Vector2 stabDirection = (_grappleTarget.Position - Position).Normalized();
+			SpawnStabParticles(_grappleTarget.GlobalPosition, stabDirection);
+
+			_grappleTarget.TakeDamage(StabDamage, this);
+		}
+	}
+
+	/// <summary>
+	/// Spawns a 45-degree cone of particles at the given position in the given direction.
+	/// </summary>
+	private void SpawnStabParticles(Vector2 spawnPosition, Vector2 direction)
+	{
+		float scaledDistance = StabParticleDistance * _scaleFactor;
+		float angle = Mathf.Atan2(direction.Y, direction.X);
+
+		var particles = new GpuParticles2D();
+		particles.Emitting = true;
+		particles.Amount = StabParticleCount;
+		particles.Lifetime = StabParticleLifetime;
+		particles.OneShot = true;
+		particles.Explosiveness = 0.9f;
+		particles.GlobalPosition = spawnPosition;
+
+		var material = new ParticleProcessMaterial();
+
+		// Direction: angle of stabber -> victim, converted to Godot's particle direction system
+		// ParticleProcessMaterial uses 3D direction, with spread for the cone
+		material.Direction = new Vector3(1, 0, 0);
+		material.Spread = Mathf.RadToDeg(StabParticleSpreadAngle / 2f); // spread is half-angle
+
+		// Speed = distance / lifetime so particles travel the full distance
+		float speed = scaledDistance / StabParticleLifetime;
+		material.InitialVelocityMin = speed * 0.8f;
+		material.InitialVelocityMax = speed * 1.2f;
+
+		// Particle size
+		float particleSize = 3f * _scaleFactor;
+		material.ScaleMin = particleSize;
+		material.ScaleMax = particleSize * 1.5f;
+
+		// Fade out over lifetime
+		material.Color = new Color(0.8f, 0f, 0f, 1f); // Red blood color
+
+		// Rotate the emission to match the stab direction
+		particles.Rotation = angle;
+
+		// Light damping so particles slow near the end
+		material.DampingMin = speed * 0.05f;
+		material.DampingMax = speed * 0.1f;
+
+		// Gravity off
+		material.Gravity = Vector3.Zero;
+
+		particles.ProcessMaterial = material;
+
+		// Add to the game world so it stays in world space
+		if (_gameWorld != null)
+		{
+			_gameWorld.AddChild(particles);
+		}
+		else
+		{
+			GetTree().CurrentScene.AddChild(particles);
+		}
+
+		// Auto-free after particles finish
+		var timer = GetTree().CreateTimer(StabParticleLifetime + 0.5f);
+		timer.Timeout += () =>
+		{
+			if (IsInstanceValid(particles))
+			{
+				particles.QueueFree();
+			}
+		};
+
+		GD.Print($"[Stab] Spawned particle effect at {spawnPosition}, direction={direction}, angle={Mathf.RadToDeg(angle):F1}°");
+	}
+
+	/// <summary>
+	/// Deal damage to this character
+	/// </summary>
+	public void TakeDamage(int amount, StabCharacter? attacker = null)
+	{
+		if (IsDead) return;
+
+		Health -= amount;
+		GD.Print($"[Health] {CharacterName} took {amount} damage from {attacker?.CharacterName ?? "unknown"}. Health: {Health}/{MaxHealth}");
+
+		if (Health <= 0)
+		{
+			Health = 0;
+			Die(attacker);
+		}
+	}
+
+	private void Die(StabCharacter? killer = null)
+	{
+		if (IsDead) return;
+
+		IsDead = true;
+		GD.Print($"[Death] {CharacterName} was killed by {killer?.CharacterName ?? "unknown"}!");
+
+		// Release any grapple relationships
+		if (_isGrappling)
+		{
+			ReleaseGrapple();
+		}
+		if (_isGrappled && _grappledBy != null && IsInstanceValid(_grappledBy))
+		{
+			_grappledBy.ClearGrappleState();
+		}
+		ClearGrappledState();
+
+		// Stop movement
+		Velocity = Vector2.Zero;
+
+		// Create death visuals
+		CreateDeathVisuals();
+	}
+
+	private void CreateDeathVisuals()
+	{
+		float baseSize = BaseRadius * 2 * _scaleFactor;
+
+		// Create blood pool (behind character)
+		_bloodPool = new ColorRect();
+		_bloodPool.Color = new Color(0.5f, 0f, 0f, 0.8f); // Dark red
+		_bloodPool.Size = new Vector2(baseSize, baseSize);
+		_bloodPool.Position = new Vector2(-baseSize / 2, -baseSize / 2);
+		_bloodPool.Scale = new Vector2(0.1f, 0.1f);
+		_bloodPool.ZIndex = -1;
+		AddChild(_bloodPool);
+
+		// Create skull overlay (on top of character)
+		_skullOverlay = new ColorRect();
+		_skullOverlay.Color = new Color(1f, 1f, 1f, 0.7f); // White, semi-transparent
+		float skullSize = baseSize * 0.6f;
+		_skullOverlay.Size = new Vector2(skullSize, skullSize);
+		_skullOverlay.Position = new Vector2(-skullSize / 2, -skullSize / 2);
+		_skullOverlay.ZIndex = 10;
+		AddChild(_skullOverlay);
+
+		// Add skull "X" eyes using labels
+		var skullLabel = new Label();
+		skullLabel.Text = "X X";
+		skullLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		skullLabel.VerticalAlignment = VerticalAlignment.Center;
+		skullLabel.Size = _skullOverlay.Size;
+		skullLabel.AddThemeColorOverride("font_color", Colors.Black);
+		int fontSize = Mathf.RoundToInt(BaseFontSize * _scaleFactor * 1.5f);
+		skullLabel.AddThemeFontSizeOverride("font_size", fontSize);
+		_skullOverlay.AddChild(skullLabel);
+
+		GD.Print($"[Death] Created death visuals for {CharacterName}");
 	}
 
 	/// <summary>
