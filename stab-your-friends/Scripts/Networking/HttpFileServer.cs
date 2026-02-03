@@ -123,8 +123,14 @@ public partial class HttpFileServer : Node
                 break;
 
             case TlsState.Handshaking:
-                client.TlsPeer!.Poll();
-                var tlsStatus = client.TlsPeer.GetStatus();
+                var tlsStatus = client.TlsPeer!.GetStatus();
+                // Only poll if still handshaking or connected
+                if (tlsStatus == StreamPeerTls.Status.Handshaking || tlsStatus == StreamPeerTls.Status.Connected)
+                {
+                    client.TlsPeer.Poll();
+                    tlsStatus = client.TlsPeer.GetStatus();
+                }
+
                 if (tlsStatus == StreamPeerTls.Status.Connected)
                 {
                     client.State = TlsState.Connected;
@@ -136,14 +142,17 @@ public partial class HttpFileServer : Node
                 break;
 
             case TlsState.Connected:
-                client.TlsPeer!.Poll();
+                var connectedStatus = client.TlsPeer!.GetStatus();
+                if (connectedStatus != StreamPeerTls.Status.Connected)
+                {
+                    _clients.RemoveAt(index);
+                    break;
+                }
+
+                client.TlsPeer.Poll();
                 if (client.TlsPeer.GetAvailableBytes() > 0)
                 {
                     HandleRequest(client.TlsPeer);
-                    _clients.RemoveAt(index);
-                }
-                else if (client.TlsPeer.GetStatus() != StreamPeerTls.Status.Connected)
-                {
                     _clients.RemoveAt(index);
                 }
                 break;

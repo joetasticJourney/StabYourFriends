@@ -159,8 +159,14 @@ public partial class WebSocketServer : Node
                 break;
 
             case TlsState.Handshaking:
-                pending.TlsPeer!.Poll();
-                var tlsStatus = pending.TlsPeer.GetStatus();
+                var tlsStatus = pending.TlsPeer!.GetStatus();
+                // Only poll if still handshaking or connected
+                if (tlsStatus == StreamPeerTls.Status.Handshaking || tlsStatus == StreamPeerTls.Status.Connected)
+                {
+                    pending.TlsPeer.Poll();
+                    tlsStatus = pending.TlsPeer.GetStatus();
+                }
+
                 if (tlsStatus == StreamPeerTls.Status.Connected)
                 {
                     pending.State = TlsState.Ready;

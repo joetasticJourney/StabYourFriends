@@ -232,27 +232,49 @@ public partial class StabCharacter : CharacterBody2D
 		if (_isGrappling && _grappleTarget != null)
 		{
 			Vector2 inputVector = new Vector2(input.Movement.X, input.Movement.Y);
+			float scaledOrbitDistance = GrappleOrbitDistance * _scaleFactor;
 
-			// Use horizontal input to rotate around target
-			float rotationInput = inputVector.X;
-			float oldAngle = _grappleAngle;
-			_grappleAngle += rotationInput * delta * GrappleRotationSpeed;
+			if (inputVector.LengthSquared() > 0.01f)
+			{
+				// Target position is opposite side of target from input direction
+				Vector2 inputNormalized = inputVector.Normalized();
+				Vector2 targetOrbitPos = _grappleTarget.Position + inputNormalized * scaledOrbitDistance;
+
+				// Calculate target angle from the desired position
+				Vector2 toTargetPos = targetOrbitPos - _grappleTarget.Position;
+				float targetAngle = Mathf.Atan2(toTargetPos.Y, toTargetPos.X);
+
+				// Calculate angular velocity based on character speed and orbit circumference
+				// Arc length = angle * radius, so angular speed = linear speed / radius
+				float angularSpeed = _currentMoveSpeed / scaledOrbitDistance;
+
+				// Find shortest rotation direction to target angle
+				float angleDiff = targetAngle - _grappleAngle;
+				// Normalize to -PI to PI
+				while (angleDiff > Mathf.Pi) angleDiff -= Mathf.Tau;
+				while (angleDiff < -Mathf.Pi) angleDiff += Mathf.Tau;
+
+				// Move towards target angle at character speed
+				float maxRotation = angularSpeed * delta;
+				if (Mathf.Abs(angleDiff) <= maxRotation)
+				{
+					_grappleAngle = targetAngle;
+				}
+				else
+				{
+					_grappleAngle += Mathf.Sign(angleDiff) * maxRotation;
+				}
+
+				GD.Print($"[Grapple] {CharacterName}: Orbiting {_grappleTarget.CharacterName} - angle={Mathf.RadToDeg(_grappleAngle):F1}°, targetAngle={Mathf.RadToDeg(targetAngle):F1}°");
+			}
 
 			// Position self at fixed distance from target
 			var offset = new Vector2(
 				Mathf.Cos(_grappleAngle),
 				Mathf.Sin(_grappleAngle)
-			) * GrappleOrbitDistance * _scaleFactor;
+			) * scaledOrbitDistance;
 
-			Vector2 newPosition = _grappleTarget.Position + offset;
-
-			// Log occasionally (every ~60 frames worth of significant movement)
-			if (Mathf.Abs(rotationInput) > 0.1f)
-			{
-				GD.Print($"[Grapple] {CharacterName}: Orbiting {_grappleTarget.CharacterName} - angle={Mathf.RadToDeg(_grappleAngle):F1}°, input={rotationInput:F2}");
-			}
-
-			Position = newPosition;
+			Position = _grappleTarget.Position + offset;
 			Velocity = Vector2.Zero;
 			return;
 		}
