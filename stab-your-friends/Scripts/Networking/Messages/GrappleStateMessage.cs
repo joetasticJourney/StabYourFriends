@@ -7,6 +7,6 @@ public class GrappleStateMessage : IMessage
     [JsonPropertyName("type")]
     public string Type => "grappleState";
 
-    [JsonPropertyName("isGrappling")]
-    public bool IsGrappling { get; set; }
+    [JsonPropertyName("stabSpeed")]
+    public float StabSpeed { get; set; } = 1.0f;
 }

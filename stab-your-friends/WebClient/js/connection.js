@@ -83,7 +83,7 @@ export class Connection {
 
     send(message) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            console.log('Sending message:', message);
+            //console.log('Sending message:', message);
             this.ws.send(JSON.stringify(message));
         } else {
             console.warn('Cannot send, WebSocket not open. State:', this.ws?.readyState);

@@ -20,8 +20,8 @@ export class Controller {
 
         // Shake detection
         this.onShake = null;
-        this.shakeThreshold = 17; // Acceleration threshold for shake detection
-        this.shakeCooldown = 200; // Minimum ms between shake events
+        this.shakeThreshold = 15; // Acceleration threshold for shake detection
+        this.shakeCooldown = 350; // Minimum ms between shake events
         this.lastShakeTime = 0;
         this.lastAcceleration = { x: 0, y: 0, z: 0 };
         this.motionListenerActive = false;
@@ -31,7 +31,8 @@ export class Controller {
         this.audioContext = null;
 
         // Stab mode (activated when grappling)
-        this.stabMode = false;
+        this.stabMode = true;
+        this.stabSpeed = 1;
         this.orientAlpha = 0;
 
         // Button cooldowns
@@ -331,9 +332,11 @@ export class Controller {
         });
     }
 
-    setStabMode(enabled) {
-        this.stabMode = enabled;
-        console.log('Stab mode:', enabled ? 'ON' : 'OFF');
+    setStabMode(newStabSpeed) {
+        this.stabMode = (newStabSpeed > 0);
+        this.stabSpeed = newStabSpeed;
+        console.log('Stab mode:', this.stabMode ? 'ON' : 'OFF');
+        console.log('Stab speed:', newStabSpeed);
     }
 
     addMotionListener() {
@@ -348,7 +351,11 @@ export class Controller {
     handleDeviceMotion(event) {
         // Try accelerationIncludingGravity first, fall back to acceleration
         const acceleration = event.accelerationIncludingGravity || event.acceleration;
-        if (!acceleration || (acceleration.x === null && acceleration.y === null && acceleration.z === null)) {
+
+        console.log('CHECK Stab mode:', this.stabMode ? 'ON' : 'OFF');
+        console.log('CHECK Stab speed:', this.stabSpeed);
+
+        if (!this.stabMode || !acceleration || (acceleration.x === null && acceleration.y === null && acceleration.z === null)) {
             return;
         }
 
@@ -366,12 +373,12 @@ export class Controller {
 
         // Debug logging (enable with: app.controller.debugMotion = true)
         if (this.debugMotion && totalDelta > 1) {
-            console.log(`Motion delta: ${totalDelta.toFixed(2)} (threshold: ${this.shakeThreshold})`);
+            console.log(`Motion delta: ${totalDelta.toFixed(2)} (threshold: ${this.shakeThreshold })`);
         }
 
-        if (totalDelta > this.shakeThreshold) {
+        if (totalDelta > this.shakeThreshold ) {
             const now = Date.now();
-            if (now - this.lastShakeTime > this.shakeCooldown) {
+            if (now - this.lastShakeTime > this.shakeCooldown / this.stabSpeed) {
                 this.lastShakeTime = now;
                 console.log(`Shake triggered! Delta: ${totalDelta.toFixed(2)}`);
                 this.triggerShake();

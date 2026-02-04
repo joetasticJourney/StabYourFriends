@@ -66,6 +66,11 @@ public partial class StabCharacter : CharacterBody2D
 	public bool IsNpc { get; private set; }
 	public int Health { get; private set; } = MaxHealth;
 	public bool IsDead { get; private set; }
+	public int Score { get; private set; }
+	public int KungFuCount { get; private set; }
+	public int ReverseGripCount { get; private set; }
+	public int TurboStabCount { get; private set; }
+	public int KillPointValue { get; set; } = 1;
 
 	private PlayerController? _controller;
 	private AnimatedSprite2D _animatedSprite = null!;
@@ -244,6 +249,10 @@ public partial class StabCharacter : CharacterBody2D
 		CharacterName = controller.PlayerName;
 		CharacterColor = controller.PlayerColor;
 		_smokeBombCount = 10;
+
+
+		GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { StabSpeed = 0f });
+	 
 
 		UpdateVisuals();
 	}
@@ -878,7 +887,7 @@ public partial class StabCharacter : CharacterBody2D
 		// Notify the grappling player's controller to enter stab mode
 		if (!IsNpc)
 		{
-			GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { IsGrappling = true });
+			GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { StabSpeed =  1 + TurboStabCount });
 		}
 
 		GD.Print($"[Grapple] === {CharacterName} GRAPPLED {target.CharacterName} ===");
@@ -905,6 +914,12 @@ public partial class StabCharacter : CharacterBody2D
 		GD.Print($"[Grapple] {CharacterName}: Being grappled by {grappler.CharacterName}");
 		_isGrappled = true;
 		_grappledBy = grappler;
+
+		if( ReverseGripCount > 0 )
+		{
+			
+			GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { StabSpeed = 1+TurboStabCount });
+		}
 	}
 
 	private void OnReleased()
@@ -920,7 +935,7 @@ public partial class StabCharacter : CharacterBody2D
 		// Notify the player's controller to exit stab mode (if was grappling)
 		if (_isGrappling && !IsNpc)
 		{
-			GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { IsGrappling = false });
+			GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { StabSpeed = 0.0f });
 		}
 
 		_isGrappling = false;
@@ -931,6 +946,13 @@ public partial class StabCharacter : CharacterBody2D
 	private void ClearGrappledState()
 	{
 		GD.Print($"[Grapple] {CharacterName}: Clearing grappled state (was grappled by: {_grappledBy?.CharacterName ?? "none"})");
+
+		if (_isGrappled && ReverseGripCount > 0)
+		{
+			ReverseGripCount--;
+			GD.Print($"[ReverseGrip] {CharacterName} used a reverse grip charge, {ReverseGripCount} remaining");
+		}
+
 		_isGrappled = false;
 		_grappledBy = null;
 	}
@@ -1014,6 +1036,15 @@ public partial class StabCharacter : CharacterBody2D
 
 			_grappleTarget.TakeDamage(StabDamage, this);
 		}
+
+		// Reverse grip: if grappled and have reverse grip, stab the grappler back
+		if (_isGrappled && ReverseGripCount > 0 && _grappledBy != null && IsInstanceValid(_grappledBy))
+		{
+			GD.Print($"[ReverseGrip] {CharacterName} reverse-stabs {_grappledBy.CharacterName} for {StabDamage} damage!");
+			var reverseDirection = (_grappledBy.Position - Position).Normalized();
+			SpawnStabParticles(_grappledBy.GlobalPosition, reverseDirection);
+			_grappledBy.TakeDamage(StabDamage, this);
+		}
 	}
 
 	/// <summary>
@@ -1021,7 +1052,7 @@ public partial class StabCharacter : CharacterBody2D
 	/// </summary>
 	private void SpawnStabParticles(Vector2 spawnPosition, Vector2 direction)
 	{
-		float scaledDistance = StabParticleDistance * _scaleFactor;
+		float scaledDistance = StabParticleDistance * _scaleFactor * (1 + (float)KungFuCount/2.0f);
 		float angle = Mathf.Atan2(direction.Y, direction.X);
 
 		var particles = new GpuParticles2D();
@@ -1255,12 +1286,48 @@ public partial class StabCharacter : CharacterBody2D
 		}
 	}
 
+	public void AddKungFu()
+	{
+		KungFuCount++;
+		GD.Print($"[KungFu] {CharacterName} kung fu level is now {KungFuCount}");
+	}
+
+	public void AddSmokeBombs(int count)
+	{
+		_smokeBombCount += count;
+		GD.Print($"[SmokeBomb] {CharacterName} gained {count} smoke bombs (total: {_smokeBombCount})");
+	}
+
+	public void AddTurboStab()
+	{
+		TurboStabCount++;
+		GD.Print($"[TurboStab] {CharacterName} turbo stab level is now {TurboStabCount}");
+	}
+
+	public void AddReverseGrip()
+	{
+		ReverseGripCount++;
+		GD.Print($"[ReverseGrip] {CharacterName} reverse grip level is now {ReverseGripCount}");
+	}
+
+	public void AddScore(int points)
+	{
+		Score += points;
+		GD.Print($"[Score] {CharacterName} now has {Score} points (+{points})");
+	}
+
 	private void Die(StabCharacter? killer = null)
 	{
 		if (IsDead) return;
 
 		IsDead = true;
 		GD.Print($"[Death] {CharacterName} was killed by {killer?.CharacterName ?? "unknown"}!");
+
+		// Award a point to the killer if they are a player
+		if (killer != null && !killer.IsDead)
+		{
+			killer.AddScore(KillPointValue);
+		}
 
 		// Release any grapple relationships
 		if (_isGrappling)

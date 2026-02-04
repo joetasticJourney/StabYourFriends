@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Godot;
 using StabYourFriends.Autoload;
 using StabYourFriends.Controllers;
+using StabYourFriends.Game.PowerUps;
 
 namespace StabYourFriends.Game;
 
@@ -21,12 +22,24 @@ public partial class GameWorld : Node2D
 	private const float AspectRatio = ReferenceWidth / ReferenceHeight; // 16:9
 	private const float BaseWallThickness = 20f;
 
-	// All characters (players and NPCs)
-	private readonly Dictionary<string, StabCharacter> _characters = new();
+	// Power-up spawn settings
+	private const float MinSpawnInterval = 2f;
+	private const float MaxSpawnInterval = 4f;
+
+	// Separate character lists for players and NPCs
+	private readonly Dictionary<string, StabCharacter> _playerCharacters = new();
+	private readonly Dictionary<string, StabCharacter> _npcCharacters = new();
 	private int _npcCounter = 0;
 	private Vector2 _gameAreaSize;  // The actual game area size (maintains aspect ratio)
 	private Vector2 _gameAreaOffset; // Offset for centering the game area
 	private float _scaleFactor = 1f;
+
+	// Power-up spawning
+	private Vector2[] _spawnPoints = new Vector2[4];
+	private readonly Dictionary<int, PowerUp> _activePowerUps = new();
+	private readonly RandomNumberGenerator _powerUpRng = new();
+	private Timer _powerUpTimer = null!;
+	private SpawnPointMarkers _spawnPointMarkers = null!;
 
 	private ColorRect _background = null!;
 	private ColorRect _letterboxLeft = null!;
@@ -61,6 +74,19 @@ public partial class GameWorld : Node2D
 
 		SpawnAllPlayers();
 		SpawnNpcs();
+
+		// Create spawn point markers
+		_spawnPointMarkers = new SpawnPointMarkers();
+		AddChild(_spawnPointMarkers);
+		_spawnPointMarkers.Update(_spawnPoints, _scaleFactor);
+
+		// Set up power-up spawn timer
+		_powerUpRng.Randomize();
+		_powerUpTimer = new Timer();
+		_powerUpTimer.OneShot = true;
+		_powerUpTimer.Timeout += OnPowerUpTimerTimeout;
+		AddChild(_powerUpTimer);
+		StartPowerUpTimer();
 
 		// Subscribe to player events for mid-game joins/leaves
 		GameManager.Instance.PlayerJoined += OnPlayerJoined;
@@ -155,6 +181,12 @@ public partial class GameWorld : Node2D
 		_rightWall.Shape = verticalShape;
 		_rightWall.Position = new Vector2(_gameAreaSize.X + wallThickness / 2, _gameAreaSize.Y / 2);
 
+		// Update power-up spawn points
+		UpdateSpawnPoints();
+
+		// Update active power-up scales
+		UpdateAllPowerUpScales();
+
 		// Update all player character scales
 		UpdateAllPlayerScales();
 	}
@@ -190,7 +222,12 @@ public partial class GameWorld : Node2D
 
 	private void UpdateAllPlayerScales()
 	{
-		foreach (var character in _characters.Values)
+		foreach (var character in _playerCharacters.Values)
+		{
+			character.SetScale(_scaleFactor);
+			character.SetGameBounds(_gameAreaSize);
+		}
+		foreach (var character in _npcCharacters.Values)
 		{
 			character.SetScale(_scaleFactor);
 			character.SetGameBounds(_gameAreaSize);
@@ -212,7 +249,7 @@ public partial class GameWorld : Node2D
 
 	private void SpawnPlayer(PlayerController controller, int index, int totalPlayers)
 	{
-		if (_characters.ContainsKey(controller.PlayerId)) return;
+		if (_playerCharacters.ContainsKey(controller.PlayerId)) return;
 
 		var character = StabCharacterScene.Instantiate<StabCharacter>();
 		character.InitializeAsPlayer(controller);
@@ -229,7 +266,7 @@ public partial class GameWorld : Node2D
 		character.Position = spawnPos;
 
 		AddChild(character);
-		_characters[controller.PlayerId] = character;
+		_playerCharacters[controller.PlayerId] = character;
 
 		GD.Print($"Spawned player: {controller.PlayerName} at {spawnPos}");
 	}
@@ -260,7 +297,7 @@ public partial class GameWorld : Node2D
 		character.Position = spawnPos;
 
 		AddChild(character);
-		_characters[npcId] = character;
+		_npcCharacters[npcId] = character;
 
 		GD.Print($"Spawned NPC: {name} at {spawnPos}");
 		return character;
@@ -277,23 +314,23 @@ public partial class GameWorld : Node2D
 	private void OnPlayerJoined(PlayerController controller)
 	{
 		// Spawn mid-game joiners
-		SpawnPlayer(controller, _characters.Count, _characters.Count + 1);
+		SpawnPlayer(controller, _playerCharacters.Count, _playerCharacters.Count + 1);
 	}
 
 	private void OnPlayerLeft(PlayerController controller)
 	{
-		if (_characters.TryGetValue(controller.PlayerId, out var character))
+		if (_playerCharacters.TryGetValue(controller.PlayerId, out var character))
 		{
 			character.CleanupGrapple();
 			character.QueueFree();
-			_characters.Remove(controller.PlayerId);
+			_playerCharacters.Remove(controller.PlayerId);
 			GD.Print($"Removed character: {character.CharacterName}");
 		}
 	}
 
 	private void OnPlayerShake(PlayerController controller)
 	{
-		if (_characters.TryGetValue(controller.PlayerId, out var character))
+		if (_playerCharacters.TryGetValue(controller.PlayerId, out var character))
 		{
 			character.OnPlayerStab();
 		}
@@ -304,24 +341,35 @@ public partial class GameWorld : Node2D
 	/// </summary>
 	public void RemoveNpc(string npcId)
 	{
-		if (_characters.TryGetValue(npcId, out var character))
+		if (_npcCharacters.TryGetValue(npcId, out var character))
 		{
 			character.CleanupGrapple();
 			character.QueueFree();
-			_characters.Remove(npcId);
+			_npcCharacters.Remove(npcId);
 			GD.Print($"Removed NPC: {character.CharacterName}");
 		}
 	}
 
 	/// <summary>
-	/// Get all characters within a radius of a position
+	/// Get all characters (players and NPCs) within a radius of a position
 	/// </summary>
 	public List<StabCharacter> GetNearbyCharacters(Vector2 position, float radius)
 	{
 		var result = new List<StabCharacter>();
 		float radiusSquared = radius * radius;
 
-		foreach (var character in _characters.Values)
+		foreach (var character in _playerCharacters.Values)
+		{
+			if (!IsInstanceValid(character)) continue;
+
+			float distSquared = (character.Position - position).LengthSquared();
+			if (distSquared <= radiusSquared)
+			{
+				result.Add(character);
+			}
+		}
+
+		foreach (var character in _npcCharacters.Values)
 		{
 			if (!IsInstanceValid(character)) continue;
 
@@ -333,6 +381,130 @@ public partial class GameWorld : Node2D
 		}
 
 		return result;
+	}
+
+	/// <summary>
+	/// Get all player-controlled characters within a radius of a position
+	/// </summary>
+	public List<StabCharacter> GetNearbyPlayerCharacters(Vector2 position, float radius)
+	{
+		var result = new List<StabCharacter>();
+		float radiusSquared = radius * radius;
+
+		foreach (var character in _playerCharacters.Values)
+		{
+			if (!IsInstanceValid(character)) continue;
+
+			float distSquared = (character.Position - position).LengthSquared();
+			if (distSquared <= radiusSquared)
+			{
+				result.Add(character);
+			}
+		}
+
+		return result;
+	}
+
+	private void UpdateSpawnPoints()
+	{
+		float x1 = 0.35f * _gameAreaSize.X;
+		float x2 = 0.65f * _gameAreaSize.X;
+		float y1 = 0.35f * _gameAreaSize.Y;
+		float y2 = 0.65f * _gameAreaSize.Y;
+
+		_spawnPoints[0] = new Vector2(x1, y1);
+		_spawnPoints[1] = new Vector2(x2, y1);
+		_spawnPoints[2] = new Vector2(x1, y2);
+		_spawnPoints[3] = new Vector2(x2, y2);
+
+		// Update spawn point markers
+		if (IsInstanceValid(_spawnPointMarkers))
+		{
+			_spawnPointMarkers.Update(_spawnPoints, _scaleFactor);
+		}
+
+		// Reposition any active power-ups to updated spawn points
+		foreach (var kvp in _activePowerUps)
+		{
+			if (IsInstanceValid(kvp.Value))
+			{
+				kvp.Value.Position = _spawnPoints[kvp.Key];
+			}
+		}
+	}
+
+	private void UpdateAllPowerUpScales()
+	{
+		foreach (var kvp in _activePowerUps)
+		{
+			if (IsInstanceValid(kvp.Value))
+			{
+				kvp.Value.UpdateScale(_scaleFactor);
+			}
+		}
+	}
+
+	private void StartPowerUpTimer()
+	{
+		float interval = _powerUpRng.RandfRange(MinSpawnInterval, MaxSpawnInterval);
+		_powerUpTimer.WaitTime = interval;
+		_powerUpTimer.Start();
+	}
+
+	private void OnPowerUpTimerTimeout()
+	{
+		SpawnRandomPowerUp();
+		StartPowerUpTimer();
+	}
+
+	private void SpawnRandomPowerUp()
+	{
+		// Clean up freed power-ups
+		var toRemove = new List<int>();
+		foreach (var kvp in _activePowerUps)
+		{
+			if (!IsInstanceValid(kvp.Value))
+			{
+				toRemove.Add(kvp.Key);
+			}
+		}
+		foreach (var key in toRemove)
+		{
+			_activePowerUps.Remove(key);
+		}
+
+		// Find available spawn points (not occupied)
+		var available = new List<int>();
+		for (int i = 0; i < _spawnPoints.Length; i++)
+		{
+			if (!_activePowerUps.ContainsKey(i))
+			{
+				available.Add(i);
+			}
+		}
+
+		if (available.Count == 0) return;
+
+		// Pick a random available spot
+		int spotIndex = available[_powerUpRng.RandiRange(0, available.Count - 1)];
+
+		// Pick a random power-up type
+		int typeIndex = _powerUpRng.RandiRange(0, 4);
+		PowerUp powerUp = typeIndex switch
+		{
+			0 => new VictoryPointPowerUp(),
+			1 => new KungFuPowerUp(),
+			2 => new ReverseGripPowerUp(),
+			3 => new SmokeBombPowerUp(),
+			4 => new TurboStabPowerUp(),
+			_ => new VictoryPointPowerUp()
+		};
+
+		powerUp.Initialize(_spawnPoints[spotIndex], _scaleFactor, this);
+		AddChild(powerUp);
+		_activePowerUps[spotIndex] = powerUp;
+
+		GD.Print($"[PowerUp] Spawned {powerUp.Label} at spot {spotIndex} ({_spawnPoints[spotIndex]})");
 	}
 
 	public override void _ExitTree()

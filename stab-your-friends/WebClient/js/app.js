@@ -123,7 +123,7 @@ class App {
                 this.handleGameStart(message);
                 break;
             case 'grappleState':
-                this.controller.setStabMode(message.isGrappling);
+                this.controller.setStabMode(message.stabSpeed);
                 break;
         }
     }
