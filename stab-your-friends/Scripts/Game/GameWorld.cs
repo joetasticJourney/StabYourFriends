@@ -10,6 +10,7 @@ public partial class GameWorld : Node2D
 {
 	[Export] public PackedScene StabCharacterScene { get; set; } = null!;
 	[Export] public int NpcCount { get; set; } = 50;
+	[Export] public float GameDurationSeconds { get; set; } = 600f;
 
 	private PackedScene _npcCharacterScene = null!;
 	private PackedScene _vipCharacterScene = null!;
@@ -67,6 +68,11 @@ public partial class GameWorld : Node2D
 	private CollisionShape2D _leftWall = null!;
 	private CollisionShape2D _rightWall = null!;
 
+	// Game timer and end conditions
+	private GameTimer _gameTimer = null!;
+	private CanvasLayer _uiLayer = null!;
+	private bool _gameEnded;
+
 	public override void _Ready()
 	{
 		// Load derived character scenes
@@ -122,12 +128,47 @@ public partial class GameWorld : Node2D
 		AddChild(_vipTimer);
 		StartVipTimer();
 
+		// Set up game timer on the UI layer
+		_uiLayer = GetNode<CanvasLayer>("UI");
+		_gameTimer = new GameTimer();
+		_uiLayer.AddChild(_gameTimer);
+		_gameTimer.Initialize(GameDurationSeconds);
+
 		// Subscribe to player events for mid-game joins/leaves
 		GameManager.Instance.PlayerJoined += OnPlayerJoined;
 		GameManager.Instance.PlayerLeft += OnPlayerLeft;
 		GameManager.Instance.PlayerShake += OnPlayerShake;
 		GameManager.Instance.PlayerDisconnected += OnPlayerDisconnected;
 		GameManager.Instance.PlayerReconnected += OnPlayerReconnected;
+	}
+
+	public override void _Process(double delta)
+	{
+		if (_gameEnded) return;
+
+		// Check timer expiry
+		if (_gameTimer.IsExpired)
+		{
+			EndGame(false);
+			return;
+		}
+
+		// Check last-player-standing (only when more than 1 player existed)
+		if (_playerCharacters.Count > 1)
+		{
+			int aliveCount = 0;
+			foreach (var character in _playerCharacters.Values)
+			{
+				if (!character.IsDead && character.Visible)
+					aliveCount++;
+			}
+
+			if (aliveCount <= 1)
+			{
+				EndGame(true);
+				return;
+			}
+		}
 	}
 
 	private void SpawnNpcs()
@@ -366,6 +407,8 @@ public partial class GameWorld : Node2D
 
 	private void OnPlayerJoined(PlayerController controller)
 	{
+		if (_gameEnded) return;
+
 		// Spawn mid-game joiners
 		SpawnPlayer(controller, _playerCharacters.Count, _playerCharacters.Count + 1);
 	}
@@ -654,6 +697,92 @@ public partial class GameWorld : Node2D
 			2 => new Vector2(-offset, _vipRng.RandfRange(0, _gameAreaSize.Y)),
 			_ => new Vector2(_gameAreaSize.X + offset, _vipRng.RandfRange(0, _gameAreaSize.Y)),
 		};
+	}
+
+	private void EndGame(bool lastPlayerStanding)
+	{
+		if (_gameEnded) return;
+		_gameEnded = true;
+
+		GD.Print($"Game ended! LastPlayerStanding={lastPlayerStanding}");
+
+		// Stop timer
+		_gameTimer.Stop();
+
+		// Stop power-up and VIP spawning
+		_powerUpTimer.Stop();
+		_vipTimer.Stop();
+
+		// Freeze all characters
+		foreach (var character in _playerCharacters.Values)
+		{
+			if (IsInstanceValid(character))
+				character.SetPhysicsProcess(false);
+		}
+		foreach (var character in _npcCharacters.Values)
+		{
+			if (IsInstanceValid(character))
+				character.SetPhysicsProcess(false);
+		}
+
+		// Build rankings and show victory screen
+		var rankings = BuildRankings(lastPlayerStanding);
+		string winnerName = rankings.Count > 0 ? rankings[0].Name : "";
+
+		var victoryScreen = new VictoryScreen();
+		victoryScreen.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		_uiLayer.AddChild(victoryScreen);
+		victoryScreen.ReturnToLobbyRequested += OnReturnToLobby;
+		victoryScreen.Show(winnerName, rankings);
+	}
+
+	private List<PlayerRanking> BuildRankings(bool lastPlayerStanding)
+	{
+		var rankings = new List<PlayerRanking>();
+
+		foreach (var character in _playerCharacters.Values)
+		{
+			if (!IsInstanceValid(character)) continue;
+
+			bool isAlive = !character.IsDead && character.Visible;
+			rankings.Add(new PlayerRanking
+			{
+				Name = character.CharacterName,
+				Score = character.Score,
+				IsDead = character.IsDead,
+				WasLastAlive = lastPlayerStanding && isAlive,
+				WasDisconnected = !character.Visible && !character.IsDead,
+			});
+		}
+
+		// Sort: last alive first, then score desc, then alive before dead, then name
+		rankings.Sort((a, b) =>
+		{
+			// Last alive always first
+			if (a.WasLastAlive != b.WasLastAlive)
+				return a.WasLastAlive ? -1 : 1;
+
+			// Then by score descending
+			if (a.Score != b.Score)
+				return b.Score.CompareTo(a.Score);
+
+			// Then alive before dead
+			bool aAlive = !a.IsDead && !a.WasDisconnected;
+			bool bAlive = !b.IsDead && !b.WasDisconnected;
+			if (aAlive != bAlive)
+				return aAlive ? -1 : 1;
+
+			// Then alphabetically
+			return string.Compare(a.Name, b.Name, System.StringComparison.Ordinal);
+		});
+
+		return rankings;
+	}
+
+	private void OnReturnToLobby()
+	{
+		GameManager.Instance.EndGame();
+		GetTree().ChangeSceneToFile("res://Scenes/Main.tscn");
 	}
 
 	public override void _ExitTree()

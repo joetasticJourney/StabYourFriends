@@ -28,6 +28,7 @@ public static class MessageSerializer
             ReadyMessage m => JsonSerializer.Serialize(m, Options),
             ShakeMessage m => JsonSerializer.Serialize(m, Options),
             GrappleStateMessage m => JsonSerializer.Serialize(m, Options),
+            GameEndMessage m => JsonSerializer.Serialize(m, Options),
             _ => throw new ArgumentException($"Unknown message type: {message.GetType()}")
         };
     }

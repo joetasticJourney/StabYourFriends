@@ -253,6 +253,14 @@ public partial class GameManager : Node
 		GameStarted?.Invoke(gameMode);
 	}
 
+	public void EndGame()
+	{
+		IsGameInProgress = false;
+		_disconnectedPlayers.Clear();
+		_server.Broadcast(new GameEndMessage());
+		BroadcastLobbyState();
+	}
+
 	public void SendToPlayer(string playerId, IMessage message)
 	{
 		_server.SendTo(playerId, message);

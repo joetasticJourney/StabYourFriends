@@ -84,6 +84,11 @@ public partial class StabCharacter : CharacterBody2D
 	private bool _isMoving;
 
 	// Grapple state
+	private const float GrabCooldownSeconds = 0.5f;
+	private const float PostGrappleCooldownSeconds = 1.0f;
+	private ulong _lastGrabAttemptMsec;
+	private ulong _grappleReleaseMsec;
+	private bool _playingAttackAnim;
 	private bool _isGrappling;
 	private bool _isGrappled;
 	private StabCharacter? _grappleTarget;
@@ -167,13 +172,21 @@ public partial class StabCharacter : CharacterBody2D
 			("run_up", "res://Sprites/RUN/run_up.png"),
 			("run_left", "res://Sprites/RUN/run_left.png"),
 			("run_right", "res://Sprites/RUN/run_right.png"),
+			("attack1_down", "res://Sprites/ATTACK 1/attack1_down.png"),
+			("attack1_up", "res://Sprites/ATTACK 1/attack1_up.png"),
+			("attack1_left", "res://Sprites/ATTACK 1/attack1_left.png"),
+			("attack1_right", "res://Sprites/ATTACK 1/attack1_right.png"),
+			("attack2_down", "res://Sprites/ATTACK 2/attack2_down.png"),
+			("attack2_up", "res://Sprites/ATTACK 2/attack2_up.png"),
+			("attack2_left", "res://Sprites/ATTACK 2/attack2_left.png"),
+			("attack2_right", "res://Sprites/ATTACK 2/attack2_right.png"),
 		};
 
 		foreach (var (animName, path) in animations)
 		{
 			spriteFrames.AddAnimation(animName);
 			spriteFrames.SetAnimationSpeed(animName, AnimationFps);
-			spriteFrames.SetAnimationLoop(animName, true);
+			spriteFrames.SetAnimationLoop(animName, !animName.StartsWith("attack"));
 
 			var sheetTexture = GD.Load<Texture2D>(path);
 			if (sheetTexture == null)
@@ -199,6 +212,8 @@ public partial class StabCharacter : CharacterBody2D
 
 	private void PlayAnimation()
 	{
+		if (_playingAttackAnim) return;
+
 		string dirSuffix = _facing switch
 		{
 			FacingDirection.Up => "up",
@@ -548,6 +563,13 @@ public partial class StabCharacter : CharacterBody2D
 			return;
 		}
 
+		// Freeze during attack animation
+		if (_playingAttackAnim)
+		{
+			Velocity = Vector2.Zero;
+			return;
+		}
+
 		// Normal movement
 		Vector2 moveInput = new Vector2(input.Movement.X, input.Movement.Y);
 		float inputMag = moveInput.Length();
@@ -763,6 +785,17 @@ public partial class StabCharacter : CharacterBody2D
 		}
 		else
 		{
+			ulong now = Time.GetTicksMsec();
+
+			// 0.5s cooldown between grab attempts
+			if (now - _lastGrabAttemptMsec < (ulong)(GrabCooldownSeconds * 1000))
+				return;
+
+			// 1s cooldown after releasing a grapple
+			if (now - _grappleReleaseMsec < (ulong)(PostGrappleCooldownSeconds * 1000))
+				return;
+
+			_lastGrabAttemptMsec = now;
 			TryStartGrapple();
 		}
 	}
@@ -770,6 +803,10 @@ public partial class StabCharacter : CharacterBody2D
 	private void TryStartGrapple()
 	{
 		GD.Print($"[Grapple] {CharacterName}: Attempting to find grapple target at position {Position}");
+
+		// Play attack animation based on facing direction
+		PlayAttackAnimation();
+
 		var target = FindGrappleTarget();
 		if (target != null)
 		{
@@ -780,6 +817,31 @@ public partial class StabCharacter : CharacterBody2D
 		{
 			GD.Print($"[Grapple] {CharacterName}: No valid target found within range {GrappleRange * _scaleFactor}");
 		}
+	}
+
+	private void PlayAttackAnimation()
+	{
+		string dirSuffix = _facing switch
+		{
+			FacingDirection.Up => "up",
+			FacingDirection.Down => "down",
+			FacingDirection.Left => "left",
+			FacingDirection.Right => "right",
+			_ => "down"
+		};
+
+		string attackType = _rng.RandiRange(0, 1) == 0 ? "attack1_" : "attack2_";
+		string animName = attackType + dirSuffix;
+		_playingAttackAnim = true;
+		_animatedSprite.AnimationFinished += OnAttackAnimationFinished;
+		_animatedSprite.Play(animName);
+	}
+
+	private void OnAttackAnimationFinished()
+	{
+		_animatedSprite.AnimationFinished -= OnAttackAnimationFinished;
+		_playingAttackAnim = false;
+		PlayAnimation();
 	}
 
 	private StabCharacter? FindGrappleTarget()
@@ -956,6 +1018,7 @@ public partial class StabCharacter : CharacterBody2D
 		if (_isGrappling && !IsNpc)
 		{
 			GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { StabSpeed = 0.0f });
+			_grappleReleaseMsec = Time.GetTicksMsec();
 		}
 
 		_isGrappling = false;

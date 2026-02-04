@@ -132,6 +132,9 @@ class App {
             case 'grappleState':
                 this.controller.setStabMode(message.stabSpeed);
                 break;
+            case 'gameEnd':
+                this.handleGameEnd();
+                break;
         }
     }
 
@@ -196,6 +199,15 @@ class App {
             this.connection.sendShake();
         };
         this.controller.startSendingInput();
+    }
+
+    handleGameEnd() {
+        console.log('Game ended, returning to lobby');
+        this.gameStarted = false;
+        this.controller.stopSendingInput();
+        this.controller.reset();
+        this.exitFullscreen();
+        this.showScreen('lobby');
     }
 
     requestFullscreen() {
