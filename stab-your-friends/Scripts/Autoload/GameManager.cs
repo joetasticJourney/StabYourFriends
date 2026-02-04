@@ -15,6 +15,7 @@ public partial class GameManager : Node
     public static GameManager Instance { get; private set; } = null!;
 
     [Export] public int MinPlayersToStart { get; set; } = 1;
+    [Export] public bool IsStabModeOn { get; set; } = true;
 
     private WebSocketServer _server = null!;
     private HttpFileServer _httpServer = null!;
@@ -140,6 +141,7 @@ public partial class GameManager : Node
             player.CurrentInput.Movement = new Vector2(message.MoveX, message.MoveY);
             player.CurrentInput.Action1 = message.Action1;
             player.CurrentInput.Action2 = message.Action2;
+            player.CurrentInput.OrientAlpha = message.OrientAlpha;
         }
     }
 
@@ -195,6 +197,11 @@ public partial class GameManager : Node
 
         // Emit signal for scene transition
         GameStarted?.Invoke(gameMode);
+    }
+
+    public void SendToPlayer(string playerId, IMessage message)
+    {
+        _server.SendTo(playerId, message);
     }
 
     public override void _ExitTree()

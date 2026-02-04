@@ -122,6 +122,9 @@ class App {
             case 'gameStart':
                 this.handleGameStart(message);
                 break;
+            case 'grappleState':
+                this.controller.setStabMode(message.isGrappling);
+                break;
         }
     }
 
@@ -179,8 +182,8 @@ class App {
         // Request fullscreen
         this.requestFullscreen();
 
-        this.controller.onInputChange = (moveX, moveY, action1, action2) => {
-            this.connection.sendInput(moveX, moveY, action1, action2);
+        this.controller.onInputChange = (moveX, moveY, action1, action2, orientAlpha) => {
+            this.connection.sendInput(moveX, moveY, action1, action2, orientAlpha);
         };
         this.controller.onShake = () => {
             this.connection.sendShake();

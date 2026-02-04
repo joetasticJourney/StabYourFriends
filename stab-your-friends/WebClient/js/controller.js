@@ -30,6 +30,10 @@ export class Controller {
         // Audio context for shake sound
         this.audioContext = null;
 
+        // Stab mode (activated when grappling)
+        this.stabMode = false;
+        this.orientAlpha = 0;
+
         // Button cooldowns
         this.buttonCooldown = 200; // ms
         this.lastAction1Time = 0;
@@ -47,6 +51,7 @@ export class Controller {
         this.setupButtons();
         this.setupStabButton();
         this.setupShakeDetection();
+        this.setupOrientationTracking();
     }
 
     setupTouchpad() {
@@ -278,6 +283,59 @@ export class Controller {
         }
     }
 
+    setupOrientationTracking() {
+        console.log('Setting up orientation tracking...');
+
+        if (!window.DeviceOrientationEvent) {
+            console.log('Device orientation not supported');
+            return;
+        }
+
+        // Request permission for iOS 13+
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            console.log('iOS detected - will request orientation permission on user interaction');
+
+            const requestPermission = async () => {
+                try {
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    console.log('DeviceOrientation permission response:', response);
+                    if (response === 'granted') {
+                        this.addOrientationListener();
+                    }
+                } catch (err) {
+                    console.error('DeviceOrientation permission error:', err);
+                }
+            };
+
+            const handler = () => {
+                requestPermission();
+                document.removeEventListener('click', handler);
+                document.removeEventListener('touchend', handler);
+            };
+
+            document.addEventListener('click', handler);
+            document.addEventListener('touchend', handler);
+        } else {
+            console.log('Non-iOS device - adding orientation listener directly');
+            this.addOrientationListener();
+        }
+    }
+
+    addOrientationListener() {
+        console.log('Adding device orientation listener');
+
+        window.addEventListener('deviceorientation', (event) => {
+            if (event.alpha !== null) {
+                this.orientAlpha = event.alpha;
+            }
+        });
+    }
+
+    setStabMode(enabled) {
+        this.stabMode = enabled;
+        console.log('Stab mode:', enabled ? 'ON' : 'OFF');
+    }
+
     addMotionListener() {
         console.log('Adding device motion listener');
         this.motionListenerActive = true;
@@ -378,7 +436,7 @@ export class Controller {
 
         this.inputSendInterval = setInterval(() => {
             if (this.onInputChange) {
-                this.onInputChange(this.moveX, this.moveY, this.action1, this.action2);
+                this.onInputChange(this.moveX, this.moveY, this.action1, this.action2, this.orientAlpha);
             }
         }, this.inputSendRate);
     }

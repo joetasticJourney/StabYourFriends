@@ -1,7 +1,9 @@
 #nullable enable
 
 using Godot;
+using StabYourFriends.Autoload;
 using StabYourFriends.Controllers;
+using StabYourFriends.Networking.Messages;
 
 namespace StabYourFriends.Game;
 
@@ -82,6 +84,9 @@ public partial class StabCharacter : CharacterBody2D
 	private bool _action1WasPressed;
 	private bool _action2WasPressed;
 	private float _grappleAngle;
+	private float _initialGrappleDirection;
+	private float _initialPlayerGrappleDirection;
+	private bool _isPlayerInStabPosition;
 
 	// Smoke bomb state
 	private int _smokeBombCount;
@@ -497,6 +502,29 @@ public partial class StabCharacter : CharacterBody2D
 
 				GD.Print($"[Grapple] {CharacterName}: Orbiting {_grappleTarget.CharacterName} - angle={Mathf.RadToDeg(_grappleAngle):F1}°, targetAngle={Mathf.RadToDeg(targetAngle):F1}°");
 			}
+			else
+			{
+				// Use phone orientation to orbit around the grapple target
+				float currentAlpha = _controller?.CurrentInput.OrientAlpha ?? 0f;
+				float alphaDiff = _initialGrappleDirection - currentAlpha;
+			
+				// Normalize to -180..180
+				while (alphaDiff > 180f) alphaDiff -= 360f;
+				while (alphaDiff < -180f) alphaDiff += 360f;
+
+				GD.Print($"[Grapple] {CharacterName}: Orient diff={alphaDiff:F1}° (current={currentAlpha:F1}°, initial={_initialGrappleDirection:F1}°)");
+
+				if(_isPlayerInStabPosition)
+				{
+					// Set grapple angle directly from orientation offset + initial direction
+					_grappleAngle = Mathf.DegToRad(alphaDiff + 90f);
+				}
+				else
+				{
+					_isPlayerInStabPosition = Mathf.Abs(alphaDiff) <= 10;
+
+				}
+			}
 
 			// Position self at fixed distance from target
 			var offset = new Vector2(
@@ -830,9 +858,15 @@ public partial class StabCharacter : CharacterBody2D
 		_isGrappling = true;
 		_grappleTarget = target;
 
+		// Store the player's compass heading at the moment they start grappling
+		_initialGrappleDirection = _controller?.CurrentInput.OrientAlpha - 90.0f ?? 0f;
 		// Calculate initial angle from target to self
 		Vector2 toSelf = Position - target.Position;
 		_grappleAngle = Mathf.Atan2(toSelf.Y, toSelf.X);
+
+		// Direction in degrees from grabbing player to grabbed target
+		Vector2 toTarget = target.Position - Position;
+		_initialPlayerGrappleDirection = Mathf.RadToDeg(Mathf.Atan2(toTarget.Y, toTarget.X));
 
 		GD.Print($"[Grapple] {CharacterName}: Starting grapple on {target.CharacterName}");
 		GD.Print($"[Grapple] {CharacterName}: Initial angle = {Mathf.RadToDeg(_grappleAngle):F1} degrees");
@@ -840,6 +874,12 @@ public partial class StabCharacter : CharacterBody2D
 
 		// Tell target they're being grappled
 		target.OnGrappled(this);
+
+		// Notify the grappling player's controller to enter stab mode
+		if (!IsNpc)
+		{
+			GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { IsGrappling = true });
+		}
 
 		GD.Print($"[Grapple] === {CharacterName} GRAPPLED {target.CharacterName} ===");
 	}
@@ -856,6 +896,7 @@ public partial class StabCharacter : CharacterBody2D
 		{
 			GD.Print($"[Grapple] {CharacterName}: No valid target to release");
 		}
+
 		ClearGrappleState();
 	}
 
@@ -875,8 +916,16 @@ public partial class StabCharacter : CharacterBody2D
 	private void ClearGrappleState()
 	{
 		GD.Print($"[Grapple] {CharacterName}: Clearing grapple state (was grappling: {_grappleTarget?.CharacterName ?? "none"})");
+
+		// Notify the player's controller to exit stab mode (if was grappling)
+		if (_isGrappling && !IsNpc)
+		{
+			GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { IsGrappling = false });
+		}
+
 		_isGrappling = false;
 		_grappleTarget = null;
+		_isPlayerInStabPosition = false;
 	}
 
 	private void ClearGrappledState()
@@ -946,10 +995,21 @@ public partial class StabCharacter : CharacterBody2D
 		// If grappling someone, deal damage and spawn particles
 		if (_isGrappling && _grappleTarget != null && IsInstanceValid(_grappleTarget))
 		{
-			GD.Print($"[Stab] {CharacterName} stabs {_grappleTarget.CharacterName} for {StabDamage} damage!");
+			float orientAlpha = _controller?.CurrentInput.OrientAlpha ?? 0f;
+			GD.Print($"[Stab] {CharacterName} stabs {_grappleTarget.CharacterName} for {StabDamage} damage! (orientAlpha={orientAlpha:F1})");
 
 			// Spawn stab particle effect at the grappled target
-			Vector2 stabDirection = (_grappleTarget.Position - Position).Normalized();
+			Vector2 stabDirection;
+			if (GameManager.Instance.IsStabModeOn)
+			{
+				float stabAngleDeg = _initialGrappleDirection - orientAlpha -90f;
+				float stabAngleRad = Mathf.DegToRad(stabAngleDeg);
+				stabDirection = new Vector2(Mathf.Cos(stabAngleRad), Mathf.Sin(stabAngleRad));
+			}
+			else
+			{
+				stabDirection = (_grappleTarget.Position - Position).Normalized();
+			}
 			SpawnStabParticles(_grappleTarget.GlobalPosition, stabDirection);
 
 			_grappleTarget.TakeDamage(StabDamage, this);

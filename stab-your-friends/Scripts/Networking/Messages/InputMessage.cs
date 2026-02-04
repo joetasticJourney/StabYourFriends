@@ -18,4 +18,7 @@ public class InputMessage : IMessage
 
     [JsonPropertyName("action2")]
     public bool Action2 { get; set; }
+
+    [JsonPropertyName("orientAlpha")]
+    public float OrientAlpha { get; set; }
 }

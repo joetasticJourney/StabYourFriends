@@ -104,13 +104,14 @@ export class Connection {
         });
     }
 
-    sendInput(moveX, moveY, action1, action2) {
+    sendInput(moveX, moveY, action1, action2, orientAlpha) {
         this.send({
             type: 'input',
             moveX: moveX,
             moveY: moveY,
             action1: action1,
-            action2: action2
+            action2: action2,
+            orientAlpha: orientAlpha || 0
         });
     }
 
