@@ -29,6 +29,11 @@ export class Controller {
 
         // Audio context for shake sound
         this.audioContext = null;
+
+        // Button cooldowns
+        this.buttonCooldown = 200; // ms
+        this.lastAction1Time = 0;
+        this.lastStabTime = 0;
     }
 
     init() {
@@ -127,9 +132,14 @@ export class Controller {
         this.moveX = Math.max(-1, Math.min(1, dy / maxRadius));
         this.moveY = Math.max(-1, Math.min(1, -dx / maxRadius));
 
-        // Update indicator position (clamp to touchpad bounds)
-        const indicatorX = Math.max(-maxRadius, Math.min(maxRadius, dx));
-        const indicatorY = Math.max(-maxRadius, Math.min(maxRadius, dy));
+        // Update indicator position (clamp to circular touchpad bounds)
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        let indicatorX = dx;
+        let indicatorY = dy;
+        if (dist > maxRadius) {
+            indicatorX = (dx / dist) * maxRadius;
+            indicatorY = (dy / dist) * maxRadius;
+        }
 
         this.touchpadIndicator.style.transform = `translate(${indicatorX}px, ${indicatorY}px)`;
         this.touchpadIndicator.classList.add('active');
@@ -145,8 +155,11 @@ export class Controller {
     }
 
     setupButtons() {
-        // Action 1
+        // Action 1 (with cooldown)
         this.addButtonListeners(this.action1Btn, () => {
+            const now = Date.now();
+            if (now - this.lastAction1Time < this.buttonCooldown) return;
+            this.lastAction1Time = now;
             this.action1 = true;
         }, () => {
             this.action1 = false;
@@ -204,6 +217,9 @@ export class Controller {
         if (!this.stabBtn) return;
 
         const onStab = () => {
+            const now = Date.now();
+            if (now - this.lastStabTime < this.buttonCooldown) return;
+            this.lastStabTime = now;
             this.stabBtn.classList.add('pressed');
             this.triggerShake();
             setTimeout(() => {

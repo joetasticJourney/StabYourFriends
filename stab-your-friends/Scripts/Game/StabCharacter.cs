@@ -7,7 +7,7 @@ namespace StabYourFriends.Game;
 
 public partial class StabCharacter : CharacterBody2D
 {
-	private enum AiState { Pausing, Moving }
+	private enum AiState { Pausing, Moving, Fleeing, Returning }
 	private enum FacingDirection { Down, Up, Left, Right }
 
 	[Export] public float BaseMoveSpeed { get; set; } = 100f;
@@ -31,7 +31,7 @@ public partial class StabCharacter : CharacterBody2D
 
 	// Grapple constants
 	private const float GrappleRange = 80f;
-	private const float GrappleOrbitDistance = 55f;
+	private const float GrappleOrbitDistance = 25f;
 	private const float GrappleRotationSpeed = 3f;
 
 	// Health and death constants
@@ -52,6 +52,11 @@ public partial class StabCharacter : CharacterBody2D
 	// Blood splatter constants
 	private const float BloodSplatterDuration = 15f;
 	private const int BloodSpeckleCount = 200;
+	private const float NpcFleeSpeedMultiplier = 3f;
+
+	// Smoke bomb constants
+	private const float SmokeBombMaxRadiusMultiplier = 15f;
+	private static readonly Color SmokeBombColor = new Color(0.4f, 0.4f, 0.4f, 0.9f);
 
 	public string CharacterId { get; set; } = "";
 	public string CharacterName { get; set; } = "";
@@ -75,7 +80,12 @@ public partial class StabCharacter : CharacterBody2D
 	private StabCharacter? _grappleTarget;
 	private StabCharacter? _grappledBy;
 	private bool _action1WasPressed;
+	private bool _action2WasPressed;
 	private float _grappleAngle;
+
+	// Smoke bomb state
+	private int _smokeBombCount;
+	private bool _hiddenInSmoke;
 
 	// Reference to game world for character lookup
 	private GameWorld? _gameWorld;
@@ -228,6 +238,7 @@ public partial class StabCharacter : CharacterBody2D
 		CharacterId = controller.PlayerId;
 		CharacterName = controller.PlayerName;
 		CharacterColor = controller.PlayerColor;
+		_smokeBombCount = 10;
 
 		UpdateVisuals();
 	}
@@ -435,11 +446,14 @@ public partial class StabCharacter : CharacterBody2D
 		bool action1Pressed = input.Action1 && !_action1WasPressed;
 		_action1WasPressed = input.Action1;
 
+		bool action2Pressed = input.Action2 && !_action2WasPressed;
+		_action2WasPressed = input.Action2;
+
 		if (action1Pressed)
 		{
 			OnAction1();
 		}
-		if (input.Action2)
+		if (action2Pressed)
 		{
 			OnAction2();
 		}
@@ -503,12 +517,53 @@ public partial class StabCharacter : CharacterBody2D
 		{
 			playerspeed += _currentMoveSpeed * (((inputMag > 1 ) ? 1 : inputMag) - 0.6f) / 0.2f;
 		}
-
+		//GD.Print($"[player] inputmag ={inputMag} playerspeed ={playerspeed}");
 		Velocity = moveInput.Normalized() * playerspeed;
 	}
 
 	private void ProcessNpcAi(float delta)
 	{
+		// Fleeing: run off the map at 3x speed, stop once fully off screen
+		if (_aiState == AiState.Fleeing)
+		{
+			if (_gameAreaBounds != Vector2.Zero && IsFullyOffScreen())
+			{
+				Velocity = Vector2.Zero;
+			}
+			else
+			{
+				Velocity = _moveDirection * _currentMoveSpeed * NpcFleeSpeedMultiplier;
+			}
+			return;
+		}
+
+		// Returning: walk back onto the map at normal speed
+		if (_aiState == AiState.Returning)
+		{
+			// Head toward center of play area
+			if (_gameAreaBounds != Vector2.Zero)
+			{
+				var center = _gameAreaBounds / 2;
+				_moveDirection = (center - Position).Normalized();
+			}
+			Velocity = _moveDirection * _currentMoveSpeed;
+
+			// Check if back inside the play area
+			float margin = WallAvoidanceDistance * _scaleFactor;
+			if (_gameAreaBounds != Vector2.Zero &&
+				Position.X > margin && Position.X < _gameAreaBounds.X - margin &&
+				Position.Y > margin && Position.Y < _gameAreaBounds.Y - margin)
+			{
+				// Back on the map, resume normal AI
+				CollisionMask = 1;
+				_aiState = AiState.Pausing;
+				_stateTimer = _rng.RandfRange(MinPauseTime, MaxPauseTime);
+				_moveDirection = Vector2.Zero;
+				GD.Print($"[NPC] {CharacterName} returned to the play area");
+			}
+			return;
+		}
+
 		_stateTimer -= delta;
 
 		if (_stateTimer <= 0)
@@ -539,6 +594,43 @@ public partial class StabCharacter : CharacterBody2D
 		{
 			Velocity = Vector2.Zero;
 		}
+	}
+
+	private void StartFleeing()
+	{
+		_aiState = AiState.Fleeing;
+
+		// Disable wall collision so they can run off the map
+		CollisionMask = 0;
+
+		// Pick direction away from center (toward nearest edge)
+		if (_gameAreaBounds != Vector2.Zero)
+		{
+			var center = _gameAreaBounds / 2;
+			_moveDirection = (Position - center).Normalized();
+		}
+		else
+		{
+			// Random direction if no bounds
+			float angle = _rng.RandfRange(0, Mathf.Tau);
+			_moveDirection = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+		}
+
+		GD.Print($"[NPC] {CharacterName} is fleeing off the map!");
+	}
+
+	private void StartReturning()
+	{
+		_aiState = AiState.Returning;
+
+		// Keep collision off until back on the map
+		if (_gameAreaBounds != Vector2.Zero)
+		{
+			var center = _gameAreaBounds / 2;
+			_moveDirection = (center - Position).Normalized();
+		}
+
+		GD.Print($"[NPC] {CharacterName} is returning to the play area");
 	}
 
 	private void CheckWallCollision()
@@ -574,6 +666,17 @@ public partial class StabCharacter : CharacterBody2D
 		// Fallback: move toward center
 		var center = _gameAreaBounds / 2;
 		_moveDirection = (center - Position).Normalized();
+	}
+
+	private bool IsFullyOffScreen()
+	{
+		float halfW = (SpriteFrameWidth / 2f) * _scaleFactor * 3f;
+		float halfH = (SpriteFrameHeight / 2f) * _scaleFactor * 3f;
+
+		return Position.X + halfW < 0 ||
+			   Position.X - halfW > _gameAreaBounds.X ||
+			   Position.Y + halfH < 0 ||
+			   Position.Y - halfH > _gameAreaBounds.Y;
 	}
 
 	private bool IsDirectionValid(Vector2 direction)
@@ -785,8 +888,46 @@ public partial class StabCharacter : CharacterBody2D
 
 	private void OnAction2()
 	{
-		// Secondary action (e.g., dash/block)
-		// TODO: Implement game-specific action
+		if (IsDead) return;
+		if (_smokeBombCount <= 0) return;
+
+		DeploySmokeBomb();
+	}
+
+	private void DeploySmokeBomb()
+	{
+		_smokeBombCount--;
+
+		float maxRadius = BaseRadius * _scaleFactor * SmokeBombMaxRadiusMultiplier;
+
+		var smokeBomb = new SmokeBomb();
+		smokeBomb.Initialize(Position, maxRadius);
+
+		_gameWorld!.AddChild(smokeBomb);
+
+		GD.Print($"[SmokeBomb] {CharacterName} deployed a smoke bomb at {Position} (remaining: {_smokeBombCount})");
+	}
+
+	public void HideInSmoke()
+	{
+		if (_hiddenInSmoke) return;
+		_hiddenInSmoke = true;
+
+		if (_nameLabel != null)
+		{
+			_nameLabel.Visible = false;
+		}
+	}
+
+	public void RevealFromSmoke()
+	{
+		if (!_hiddenInSmoke) return;
+		_hiddenInSmoke = false;
+
+		if (_nameLabel != null && !IsDead)
+		{
+			_nameLabel.Visible = true;
+		}
 	}
 
 	/// <summary>
@@ -935,6 +1076,12 @@ public partial class StabCharacter : CharacterBody2D
 		// Reset timer if already splattered
 		_bloodSplatterTimer = BloodSplatterDuration;
 
+		// NPC: start fleeing off the map
+		if (IsNpc && _aiState != AiState.Fleeing)
+		{
+			StartFleeing();
+		}
+
 		// Don't create a new overlay if one already exists
 		if (_bloodSplatterOverlay != null) return;
 
@@ -983,6 +1130,12 @@ public partial class StabCharacter : CharacterBody2D
 			GD.Print($"[Stab] {CharacterName} blood splatter wore off");
 		}
 		_bloodSplatterTimer = 0f;
+
+		// NPC: start returning to the play area
+		if (IsNpc && _aiState == AiState.Fleeing)
+		{
+			StartReturning();
+		}
 	}
 
 	private void SpawnDebugCone(Vector2 origin, float angle, float distance)
