@@ -4,8 +4,9 @@ namespace StabYourFriends.Controllers;
 
 public class PlayerController
 {
-	public string PlayerId { get; }
+	public string PlayerId { get; set; }
 	public string PlayerName { get; set; }
+	public string DeviceId { get; }
 	public Color PlayerColor { get; }
 	public PlayerInput CurrentInput { get; } = new();
 
@@ -23,10 +24,11 @@ public class PlayerController
 
 	private static int _colorIndex;
 
-	public PlayerController(string playerId, string playerName)
+	public PlayerController(string playerId, string playerName, string deviceId)
 	{
 		PlayerId = playerId;
 		PlayerName = playerName;
+		DeviceId = deviceId;
 		PlayerColor = GetNextColor();
 	}
 

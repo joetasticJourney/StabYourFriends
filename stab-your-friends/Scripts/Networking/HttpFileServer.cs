@@ -150,6 +150,14 @@ public partial class HttpFileServer : Node
                 }
 
                 client.TlsPeer.Poll();
+
+                // Re-check status after poll — the peer may have disconnected
+                if (client.TlsPeer.GetStatus() != StreamPeerTls.Status.Connected)
+                {
+                    _clients.RemoveAt(index);
+                    break;
+                }
+
                 if (client.TlsPeer.GetAvailableBytes() > 0)
                 {
                     HandleRequest(client.TlsPeer);

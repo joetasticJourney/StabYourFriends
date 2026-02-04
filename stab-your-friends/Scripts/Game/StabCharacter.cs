@@ -70,7 +70,9 @@ public partial class StabCharacter : CharacterBody2D
 	public int KungFuCount { get; private set; }
 	public int ReverseGripCount { get; private set; }
 	public int TurboStabCount { get; private set; }
+	public int SmokeBombCount => _smokeBombCount;
 	public int KillPointValue { get; set; } = 1;
+	public const int MaxHealthValue = MaxHealth;
 
 	private PlayerController? _controller;
 	private AnimatedSprite2D _animatedSprite = null!;
@@ -1341,10 +1343,18 @@ public partial class StabCharacter : CharacterBody2D
 		IsDead = true;
 		GD.Print($"[Death] {CharacterName} was killed by {killer?.CharacterName ?? "unknown"}!");
 
-		// Award a point to the killer if they are a player
+		// Award a point and transfer power-ups to the killer
 		if (killer != null && !killer.IsDead)
 		{
 			killer.AddScore(KillPointValue);
+
+			// Transfer power-ups
+			for (int i = 0; i < KungFuCount; i++) killer.AddKungFu();
+			for (int i = 0; i < ReverseGripCount; i++) killer.AddReverseGrip();
+			for (int i = 0; i < TurboStabCount; i++) killer.AddTurboStab();
+			if (_smokeBombCount > 0) killer.AddSmokeBombs(_smokeBombCount);
+
+			GD.Print($"[Death] Transferred power-ups to {killer.CharacterName}: KungFu={KungFuCount}, ReverseGrip={ReverseGripCount}, TurboStab={TurboStabCount}, SmokeBombs={_smokeBombCount}");
 		}
 
 		// Release any grapple relationships
@@ -1405,6 +1415,18 @@ public partial class StabCharacter : CharacterBody2D
 		_skullOverlay.AddChild(skullLabel);
 
 		GD.Print($"[Death] Created death visuals for {CharacterName}");
+	}
+
+	/// <summary>
+	/// Reassign this character to a new PlayerController (used on reconnect).
+	/// Updates internal references so input routing works with the new connection ID.
+	/// </summary>
+	public void ReassignController(PlayerController controller)
+	{
+		_controller = controller;
+		CharacterId = controller.PlayerId;
+		CharacterName = controller.PlayerName;
+		UpdateVisuals();
 	}
 
 	/// <summary>

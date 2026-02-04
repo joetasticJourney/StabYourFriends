@@ -13,6 +13,10 @@ public partial class GameModeMenu : Control
     private Button _survivalButton = null!;
     private Button _cancelButton = null!;
 
+    private Action _onFreeForAll = null!;
+    private Action _onTeamBattle = null!;
+    private Action _onSurvival = null!;
+
     public override void _Ready()
     {
         _freeForAllButton = GetNode<Button>("%FreeForAllButton");
@@ -20,9 +24,13 @@ public partial class GameModeMenu : Control
         _survivalButton = GetNode<Button>("%SurvivalButton");
         _cancelButton = GetNode<Button>("%CancelButton");
 
-        _freeForAllButton.Pressed += () => OnGameModeSelected("FreeForAll");
-        _teamBattleButton.Pressed += () => OnGameModeSelected("TeamBattle");
-        _survivalButton.Pressed += () => OnGameModeSelected("Survival");
+        _onFreeForAll = () => OnGameModeSelected("FreeForAll");
+        _onTeamBattle = () => OnGameModeSelected("TeamBattle");
+        _onSurvival = () => OnGameModeSelected("Survival");
+
+        _freeForAllButton.Pressed += _onFreeForAll;
+        _teamBattleButton.Pressed += _onTeamBattle;
+        _survivalButton.Pressed += _onSurvival;
         _cancelButton.Pressed += OnCancelPressed;
     }
 
@@ -39,9 +47,9 @@ public partial class GameModeMenu : Control
 
     public override void _ExitTree()
     {
-        _freeForAllButton.Pressed -= () => OnGameModeSelected("FreeForAll");
-        _teamBattleButton.Pressed -= () => OnGameModeSelected("TeamBattle");
-        _survivalButton.Pressed -= () => OnGameModeSelected("Survival");
+        _freeForAllButton.Pressed -= _onFreeForAll;
+        _teamBattleButton.Pressed -= _onTeamBattle;
+        _survivalButton.Pressed -= _onSurvival;
         _cancelButton.Pressed -= OnCancelPressed;
     }
 }

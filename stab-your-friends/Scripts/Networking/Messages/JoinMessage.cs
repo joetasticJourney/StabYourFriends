@@ -9,4 +9,7 @@ public class JoinMessage : IMessage
 
     [JsonPropertyName("playerName")]
     public string PlayerName { get; set; } = "";
+
+    [JsonPropertyName("deviceId")]
+    public string DeviceId { get; set; } = "";
 }

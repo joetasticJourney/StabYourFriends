@@ -90,10 +90,11 @@ export class Connection {
         }
     }
 
-    sendJoin(playerName) {
+    sendJoin(playerName, deviceId) {
         this.send({
             type: 'join',
-            playerName: playerName
+            playerName: playerName,
+            deviceId: deviceId
         });
     }
 

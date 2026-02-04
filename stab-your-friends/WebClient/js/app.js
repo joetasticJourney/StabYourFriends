@@ -27,6 +27,13 @@ class App {
         this.setupControllerScreen();
         this.controller.init();
 
+        // Generate or load device ID for reconnection
+        this.deviceId = localStorage.getItem('deviceId');
+        if (!this.deviceId) {
+            this.deviceId = crypto.randomUUID();
+            localStorage.setItem('deviceId', this.deviceId);
+        }
+
         // Auto-fill server IP from current page host (since HTTP and WebSocket are on same server)
         const currentHost = window.location.hostname || 'localhost';
         document.getElementById('server-ip').value = currentHost;
@@ -91,7 +98,7 @@ class App {
 
             try {
                 await this.connection.connect(ip, port);
-                this.connection.sendJoin(name);
+                this.connection.sendJoin(name, this.deviceId);
             } catch (error) {
                 errorEl.textContent = error.message || 'Failed to connect';
                 connectBtn.disabled = false;

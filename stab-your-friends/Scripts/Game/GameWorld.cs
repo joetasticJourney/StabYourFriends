@@ -24,6 +24,7 @@ public partial class GameWorld : Node2D
 	private const float ReferenceHeight = 1080f;
 	private const float AspectRatio = ReferenceWidth / ReferenceHeight; // 16:9
 	private const float BaseWallThickness = 20f;
+	private const float LeaderboardRefWidth = 125f;
 
 	// Power-up spawn settings
 	private const float MinSpawnInterval = 2f;
@@ -53,6 +54,9 @@ public partial class GameWorld : Node2D
 	private Timer _vipTimer = null!;
 	private int _vipCounter = 0;
 
+	private Leaderboard _leaderboard = null!;
+	private float _leaderboardWidth;
+
 	private ColorRect _background = null!;
 	private ColorRect _letterboxLeft = null!;
 	private ColorRect _letterboxRight = null!;
@@ -78,6 +82,12 @@ public partial class GameWorld : Node2D
 
 		// Create letterbox bars for aspect ratio preservation
 		CreateLetterboxBars();
+
+		// Create leaderboard panel
+		_leaderboard = new Leaderboard();
+		_leaderboard.ZIndex = 101;
+		_leaderboard.SetPlayerCharacters(_playerCharacters);
+		AddChild(_leaderboard);
 
 		// Initial size update
 		UpdateWorldSize();
@@ -116,6 +126,8 @@ public partial class GameWorld : Node2D
 		GameManager.Instance.PlayerJoined += OnPlayerJoined;
 		GameManager.Instance.PlayerLeft += OnPlayerLeft;
 		GameManager.Instance.PlayerShake += OnPlayerShake;
+		GameManager.Instance.PlayerDisconnected += OnPlayerDisconnected;
+		GameManager.Instance.PlayerReconnected += OnPlayerReconnected;
 	}
 
 	private void SpawnNpcs()
@@ -150,24 +162,30 @@ public partial class GameWorld : Node2D
 	private void UpdateWorldSize()
 	{
 		var viewportSize = GetViewportRect().Size;
-		float viewportAspect = viewportSize.X / viewportSize.Y;
 
-		// Calculate game area size to fit within viewport while maintaining aspect ratio
-		if (viewportAspect > AspectRatio)
+		// Reserve leaderboard width based on viewport height scale
+		float heightScale = viewportSize.Y / ReferenceHeight;
+		_leaderboardWidth = LeaderboardRefWidth * heightScale;
+		float availableWidth = viewportSize.X - _leaderboardWidth;
+
+		// Calculate game area size to fit in remaining space while maintaining 16:9
+		float availableAspect = availableWidth / viewportSize.Y;
+		if (availableAspect > AspectRatio)
 		{
-			// Window is wider than 16:9 - fit to height, letterbox sides
 			_gameAreaSize.Y = viewportSize.Y;
 			_gameAreaSize.X = viewportSize.Y * AspectRatio;
 		}
 		else
 		{
-			// Window is taller than 16:9 - fit to width, letterbox top/bottom
-			_gameAreaSize.X = viewportSize.X;
-			_gameAreaSize.Y = viewportSize.X / AspectRatio;
+			_gameAreaSize.X = availableWidth;
+			_gameAreaSize.Y = availableWidth / AspectRatio;
 		}
 
-		// Calculate offset to center the game area
-		_gameAreaOffset = (viewportSize - _gameAreaSize) / 2;
+		// Center game area vertically, horizontally within the non-leaderboard space
+		_gameAreaOffset = new Vector2(
+			(availableWidth - _gameAreaSize.X) / 2f,
+			(viewportSize.Y - _gameAreaSize.Y) / 2f
+		);
 
 		// Calculate scale factor based on game area height vs reference
 		_scaleFactor = _gameAreaSize.Y / ReferenceHeight;
@@ -213,6 +231,17 @@ public partial class GameWorld : Node2D
 
 		// Update all player character scales
 		UpdateAllPlayerScales();
+
+		// Position leaderboard to the right edge of viewport (coords relative to this node at _gameAreaOffset)
+		if (IsInstanceValid(_leaderboard))
+		{
+			_leaderboard.Position = new Vector2(
+				viewportSize.X - _leaderboardWidth - _gameAreaOffset.X,
+				-_gameAreaOffset.Y
+			);
+			_leaderboard.Size = new Vector2(_leaderboardWidth, viewportSize.Y);
+			_leaderboard.SetScaleFactor(_scaleFactor);
+		}
 	}
 
 	private void UpdateLetterboxBars(Vector2 viewportSize)
@@ -349,6 +378,45 @@ public partial class GameWorld : Node2D
 			character.QueueFree();
 			_playerCharacters.Remove(controller.PlayerId);
 			GD.Print($"Removed character: {character.CharacterName}");
+		}
+	}
+
+	private void OnPlayerDisconnected(PlayerController controller)
+	{
+		// PlayerId hasn't been remapped yet — it still has the old connection ID
+		if (_playerCharacters.TryGetValue(controller.PlayerId, out var character))
+		{
+			character.CleanupGrapple();
+			character.Visible = false;
+			character.SetPhysicsProcess(false);
+			GD.Print($"Player disconnected, hiding character: {character.CharacterName}");
+		}
+	}
+
+	private void OnPlayerReconnected(PlayerController controller, string oldPlayerId)
+	{
+		// The controller's PlayerId has already been updated to the new connection ID.
+		// The character is keyed under oldPlayerId in _playerCharacters.
+		if (_playerCharacters.TryGetValue(oldPlayerId, out var character))
+		{
+			// Remap the dictionary key
+			_playerCharacters.Remove(oldPlayerId);
+			_playerCharacters[controller.PlayerId] = character;
+
+			// Reassign the controller so input routes correctly
+			character.ReassignController(controller);
+
+			// Unhide
+			character.Visible = true;
+			character.SetPhysicsProcess(true);
+
+			GD.Print($"Player reconnected, unhiding character: {character.CharacterName} (old key={oldPlayerId}, new key={controller.PlayerId})");
+		}
+		else
+		{
+			// Character not found — spawn as new player
+			GD.Print($"Player reconnected but no character found, spawning new: {controller.PlayerName}");
+			SpawnPlayer(controller, _playerCharacters.Count, _playerCharacters.Count + 1);
 		}
 	}
 
@@ -599,6 +667,8 @@ public partial class GameWorld : Node2D
 			GameManager.Instance.PlayerJoined -= OnPlayerJoined;
 			GameManager.Instance.PlayerLeft -= OnPlayerLeft;
 			GameManager.Instance.PlayerShake -= OnPlayerShake;
+			GameManager.Instance.PlayerDisconnected -= OnPlayerDisconnected;
+			GameManager.Instance.PlayerReconnected -= OnPlayerReconnected;
 		}
 	}
 }

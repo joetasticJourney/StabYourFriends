@@ -20,10 +20,13 @@ public partial class GameManager : Node
 	private WebSocketServer _server = null!;
 	private HttpFileServer _httpServer = null!;
 	private readonly Dictionary<string, PlayerController> _players = new();
+	private readonly Dictionary<string, PlayerController> _disconnectedPlayers = new();
 
 	public event Action? LobbyStateChanged;
 	public event Action<PlayerController>? PlayerJoined;
 	public event Action<PlayerController>? PlayerLeft;
+	public event Action<PlayerController>? PlayerDisconnected;
+	public event Action<PlayerController, string>? PlayerReconnected;
 	public event Action<string>? GameStarted;
 	public event Action<PlayerController>? PlayerShake;
 
@@ -70,8 +73,27 @@ public partial class GameManager : Node
 		if (_players.TryGetValue(client.Id, out var player))
 		{
 			_players.Remove(client.Id);
-			GD.Print($"Player left: {player.PlayerName}");
-			PlayerLeft?.Invoke(player);
+
+			if (IsGameInProgress && !string.IsNullOrEmpty(player.DeviceId))
+			{
+				// During gameplay, move to disconnected pool so they can reconnect
+				_disconnectedPlayers[player.DeviceId] = player;
+
+				// Zero out input so character stops moving
+				player.CurrentInput.Movement = Godot.Vector2.Zero;
+				player.CurrentInput.Action1 = false;
+				player.CurrentInput.Action2 = false;
+
+				GD.Print($"Player disconnected (can reconnect): {player.PlayerName} [deviceId={player.DeviceId}]");
+				PlayerDisconnected?.Invoke(player);
+			}
+			else
+			{
+				// In lobby or no deviceId — full removal
+				GD.Print($"Player left: {player.PlayerName}");
+				PlayerLeft?.Invoke(player);
+			}
+
 			BroadcastLobbyState();
 		}
 	}
@@ -104,6 +126,37 @@ public partial class GameManager : Node
 			return;
 		}
 
+		// Check for reconnecting player by deviceId
+		if (!string.IsNullOrEmpty(message.DeviceId) &&
+			_disconnectedPlayers.TryGetValue(message.DeviceId, out var existingPlayer))
+		{
+			_disconnectedPlayers.Remove(message.DeviceId);
+
+			// Store old ID for remapping character dict in GameWorld
+			var oldPlayerId = existingPlayer.PlayerId;
+
+			// Remap to new connection
+			existingPlayer.PlayerId = client.Id;
+			_players[client.Id] = existingPlayer;
+
+			GD.Print($"Player reconnected: {existingPlayer.PlayerName} (old id={oldPlayerId}, new id={client.Id}, deviceId={message.DeviceId})");
+
+			client.Send(new WelcomeMessage
+			{
+				PlayerId = existingPlayer.PlayerId,
+				PlayerColor = existingPlayer.GetColorHex()
+			});
+
+			if (IsGameInProgress)
+			{
+				client.Send(new GameStartMessage { GameMode = CurrentGameMode });
+			}
+
+			PlayerReconnected?.Invoke(existingPlayer, oldPlayerId);
+			BroadcastLobbyState();
+			return;
+		}
+
 		var playerName = string.IsNullOrWhiteSpace(message.PlayerName)
 			? $"Player {_players.Count + 1}"
 			: message.PlayerName.Trim();
@@ -113,7 +166,7 @@ public partial class GameManager : Node
 			playerName = playerName[..20];
 		}
 
-		var player = new PlayerController(client.Id, playerName);
+		var player = new PlayerController(client.Id, playerName, message.DeviceId);
 		_players[client.Id] = player;
 
 		GD.Print($"Player joined: {player.PlayerName} ({player.PlayerId})");
@@ -174,6 +227,7 @@ public partial class GameManager : Node
 	public void ResetLobby()
 	{
 		_players.Clear();
+		_disconnectedPlayers.Clear();
 		PlayerController.ResetColorIndex();
 		CurrentGameMode = "";
 		IsGameInProgress = false;
