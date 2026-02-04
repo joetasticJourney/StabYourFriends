@@ -11,6 +11,9 @@ public partial class GameWorld : Node2D
 	[Export] public PackedScene StabCharacterScene { get; set; } = null!;
 	[Export] public int NpcCount { get; set; } = 50;
 
+	private PackedScene _npcCharacterScene = null!;
+	private PackedScene _vipCharacterScene = null!;
+
 	public string GameMode { get; set; } = "FreeForAll";
 
 	// Universal character color (same for all players and NPCs)
@@ -25,6 +28,10 @@ public partial class GameWorld : Node2D
 	// Power-up spawn settings
 	private const float MinSpawnInterval = 2f;
 	private const float MaxSpawnInterval = 4f;
+
+	// VIP spawn settings
+	private const float MinVipSpawnInterval = 5f;
+	private const float MaxVipSpawnInterval = 20f;
 
 	// Separate character lists for players and NPCs
 	private readonly Dictionary<string, StabCharacter> _playerCharacters = new();
@@ -41,6 +48,11 @@ public partial class GameWorld : Node2D
 	private Timer _powerUpTimer = null!;
 	private SpawnPointMarkers _spawnPointMarkers = null!;
 
+	// VIP spawning
+	private readonly RandomNumberGenerator _vipRng = new();
+	private Timer _vipTimer = null!;
+	private int _vipCounter = 0;
+
 	private ColorRect _background = null!;
 	private ColorRect _letterboxLeft = null!;
 	private ColorRect _letterboxRight = null!;
@@ -53,6 +65,10 @@ public partial class GameWorld : Node2D
 
 	public override void _Ready()
 	{
+		// Load derived character scenes
+		_npcCharacterScene = GD.Load<PackedScene>("res://Scenes/Game/NpcCharacter.tscn");
+		_vipCharacterScene = GD.Load<PackedScene>("res://Scenes/Game/VipCharacter.tscn");
+
 		// Get references to scene elements
 		_background = GetNode<ColorRect>("Background");
 		_topWall = GetNode<CollisionShape2D>("Walls/TopWall/CollisionShape2D");
@@ -87,6 +103,14 @@ public partial class GameWorld : Node2D
 		_powerUpTimer.Timeout += OnPowerUpTimerTimeout;
 		AddChild(_powerUpTimer);
 		StartPowerUpTimer();
+
+		// Set up VIP spawn timer
+		_vipRng.Randomize();
+		_vipTimer = new Timer();
+		_vipTimer.OneShot = true;
+		_vipTimer.Timeout += OnVipTimerTimeout;
+		AddChild(_vipTimer);
+		StartVipTimer();
 
 		// Subscribe to player events for mid-game joins/leaves
 		GameManager.Instance.PlayerJoined += OnPlayerJoined;
@@ -279,7 +303,7 @@ public partial class GameWorld : Node2D
 		_npcCounter++;
 		string npcId = $"npc_{_npcCounter}";
 
-		var character = StabCharacterScene.Instantiate<StabCharacter>();
+		var character = _npcCharacterScene.Instantiate<NpcCharacter>();
 		character.InitializeAsNpc(npcId, name, color);
 
 		// Set initial scale and game bounds
@@ -507,9 +531,68 @@ public partial class GameWorld : Node2D
 		GD.Print($"[PowerUp] Spawned {powerUp.Label} at spot {spotIndex} ({_spawnPoints[spotIndex]})");
 	}
 
+	private void StartVipTimer()
+	{
+		float interval = _vipRng.RandfRange(MinVipSpawnInterval, MaxVipSpawnInterval);
+		_vipTimer.WaitTime = interval;
+		_vipTimer.Start();
+	}
+
+	private void OnVipTimerTimeout()
+	{
+		SpawnVip();
+		StartVipTimer();
+	}
+
+	private void SpawnVip()
+	{
+		_vipCounter++;
+		_npcCounter++;
+		string vipId = $"vip_{_vipCounter}";
+		string vipName = $"VIP {_vipCounter}";
+
+		var character = _vipCharacterScene.Instantiate<VipCharacter>();
+		character.InitializeAsNpc(vipId, vipName, Colors.White);
+
+		character.SetScale(_scaleFactor);
+		character.SetGameBounds(_gameAreaSize);
+
+		// Pick a random edge and position just off-screen
+		var spawnPos = GetOffScreenSpawnPosition();
+		character.Position = spawnPos;
+
+		// Disable wall collision so it can walk onto the map
+		character.CollisionMask = 0;
+
+		AddChild(character);
+		_npcCharacters[vipId] = character;
+
+		// Start returning state so it walks toward the play area
+		character.StartReturning();
+
+		GD.Print($"Spawned VIP: {vipName} at {spawnPos}");
+	}
+
+	private Vector2 GetOffScreenSpawnPosition()
+	{
+		float offset = 150f * _scaleFactor;
+		// 0=top, 1=bottom, 2=left, 3=right
+		int edge = _vipRng.RandiRange(0, 3);
+
+		return edge switch
+		{
+			0 => new Vector2(_vipRng.RandfRange(0, _gameAreaSize.X), -offset),
+			1 => new Vector2(_vipRng.RandfRange(0, _gameAreaSize.X), _gameAreaSize.Y + offset),
+			2 => new Vector2(-offset, _vipRng.RandfRange(0, _gameAreaSize.Y)),
+			_ => new Vector2(_gameAreaSize.X + offset, _vipRng.RandfRange(0, _gameAreaSize.Y)),
+		};
+	}
+
 	public override void _ExitTree()
 	{
 		GetTree().Root.SizeChanged -= OnViewportSizeChanged;
+
+		_vipTimer.Timeout -= OnVipTimerTimeout;
 
 		if (GameManager.Instance != null)
 		{

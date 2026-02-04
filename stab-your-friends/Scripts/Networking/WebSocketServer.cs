@@ -112,8 +112,12 @@ public partial class WebSocketServer : Node
             var client = _pendingClients[i];
             client.Poll();
 
+            // The Poll/disconnect callback may have already removed this client
+            if (i >= _pendingClients.Count)
+                continue;
+
             // Remove if closed during handshake
-            if (client.IsClosed)
+            if (client.IsClosed && _pendingClients[i] == client)
             {
                 GD.Print($"Client {client.Id} closed during handshake");
                 CleanupClient(client);

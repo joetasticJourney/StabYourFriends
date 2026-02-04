@@ -64,7 +64,7 @@ public partial class StabCharacter : CharacterBody2D
 	public string CharacterName { get; set; } = "";
 	public Color CharacterColor { get; set; } = Colors.White;
 	public bool IsNpc { get; private set; }
-	public int Health { get; private set; } = MaxHealth;
+	public int Health { get; protected set; } = MaxHealth;
 	public bool IsDead { get; private set; }
 	public int Score { get; private set; }
 	public int KungFuCount { get; private set; }
@@ -656,7 +656,7 @@ public partial class StabCharacter : CharacterBody2D
 		GD.Print($"[NPC] {CharacterName} is fleeing off the map!");
 	}
 
-	private void StartReturning()
+	public void StartReturning()
 	{
 		_aiState = AiState.Returning;
 
@@ -793,8 +793,10 @@ public partial class StabCharacter : CharacterBody2D
 		GD.Print($"[Grapple] {CharacterName}: Found {nearbyCharacters.Count} characters within range {scaledRange}");
 
 		StabCharacter? closestPlayer = null;
+		StabCharacter? closestVip = null;
 		StabCharacter? closestNpc = null;
 		float closestPlayerDist = float.MaxValue;
+		float closestVipDist = float.MaxValue;
 		float closestNpcDist = float.MaxValue;
 
 		foreach (var character in nearbyCharacters)
@@ -833,9 +835,19 @@ public partial class StabCharacter : CharacterBody2D
 					GD.Print($"[Grapple] {CharacterName}: {character.CharacterName} is new closest player (dist={distance:F1})");
 				}
 			}
+			else if (character is VipCharacter)
+			{
+				// VIP character
+				if (distance < closestVipDist)
+				{
+					closestVipDist = distance;
+					closestVip = character;
+					GD.Print($"[Grapple] {CharacterName}: {character.CharacterName} is new closest VIP (dist={distance:F1})");
+				}
+			}
 			else
 			{
-				// NPC
+				// Regular NPC
 				if (distance < closestNpcDist)
 				{
 					closestNpcDist = distance;
@@ -845,16 +857,22 @@ public partial class StabCharacter : CharacterBody2D
 			}
 		}
 
-		// Prioritize player-controlled targets
+		// Priority: player > VIP > regular NPC
 		if (closestPlayer != null)
 		{
 			GD.Print($"[Grapple] {CharacterName}: Selected player target {closestPlayer.CharacterName}");
 			return closestPlayer;
 		}
 
+		if (closestVip != null)
+		{
+			GD.Print($"[Grapple] {CharacterName}: Selected VIP target {closestVip.CharacterName}");
+			return closestVip;
+		}
+
 		if (closestNpc != null)
 		{
-			GD.Print($"[Grapple] {CharacterName}: No players in range, selected NPC target {closestNpc.CharacterName}");
+			GD.Print($"[Grapple] {CharacterName}: Selected NPC target {closestNpc.CharacterName}");
 			return closestNpc;
 		}
 

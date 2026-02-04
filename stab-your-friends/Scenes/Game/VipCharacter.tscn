@@ -1,0 +1,24 @@
+[gd_scene load_steps=3 format=3 uid="uid://b6ov0g6v5hp4l"]
+
+[ext_resource type="Script" path="res://Scripts/Game/VipCharacter.cs" id="1_vip_character"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_1"]
+radius = 25.0
+
+[node name="VipCharacter" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("1_vip_character")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_1")
+
+[node name="NameLabel" type="Label" parent="."]
+offset_left = -50.0
+offset_top = -45.0
+offset_right = 50.0
+offset_bottom = -25.0
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
