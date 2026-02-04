@@ -49,6 +49,10 @@ public partial class StabCharacter : CharacterBody2D
 	private const float StabParticleLifetime = 0.6f;
 	private const int StabParticleCount = 120;
 
+	// Blood splatter constants
+	private const float BloodSplatterDuration = 15f;
+	private const int BloodSpeckleCount = 200;
+
 	public string CharacterId { get; set; } = "";
 	public string CharacterName { get; set; } = "";
 	public Color CharacterColor { get; set; } = Colors.White;
@@ -85,6 +89,10 @@ public partial class StabCharacter : CharacterBody2D
 	private ColorRect? _bloodPool;
 	private float _bloodExpandTimer;
 
+	// Blood splatter state
+	private Node2D? _bloodSplatterOverlay;
+	private float _bloodSplatterTimer;
+
 	// NPC AI state
 	private AiState _aiState = AiState.Pausing;
 	private float _stateTimer;
@@ -95,6 +103,7 @@ public partial class StabCharacter : CharacterBody2D
 	public override void _Ready()
 	{
 		_animatedSprite = GetNode<AnimatedSprite2D>("AnimatedSprite2D");
+		_animatedSprite.ClipChildren = CanvasItem.ClipChildrenMode.AndDraw;
 		_nameLabel = GetNode<Label>("NameLabel");
 		_collisionShape = GetNode<CollisionShape2D>("CollisionShape2D");
 		_currentMoveSpeed = BaseMoveSpeed;
@@ -292,6 +301,16 @@ public partial class StabCharacter : CharacterBody2D
 
 	public override void _PhysicsProcess(double delta)
 	{
+		// Tick blood splatter timer
+		if (_bloodSplatterOverlay != null && _bloodSplatterTimer > 0f)
+		{
+			_bloodSplatterTimer -= (float)delta;
+			if (_bloodSplatterTimer <= 0f)
+			{
+				RemoveBloodSplatter();
+			}
+		}
+
 		// Handle death state
 		if (IsDead)
 		{
@@ -867,7 +886,103 @@ public partial class StabCharacter : CharacterBody2D
 		// Draw debug triangle for the cone
 		SpawnDebugCone(spawnPosition, angle, scaledDistance);
 
+		// Splatter blood on characters inside the cone
+		SplatterCharactersInCone(spawnPosition, angle, scaledDistance);
+
 		GD.Print($"[Stab] Spawned particle effect at {spawnPosition}, direction={direction}, angle={Mathf.RadToDeg(angle):F1}°");
+	}
+
+	private void SplatterCharactersInCone(Vector2 origin, float coneAngle, float coneDistance)
+	{
+		if (_gameWorld == null) return;
+
+		float halfSpread = StabParticleSpreadAngle / 2f;
+		var nearby = _gameWorld.GetNearbyCharacters(origin, coneDistance);
+
+		foreach (var character in nearby)
+		{
+			// Skip self and the grapple target (they take damage, not splatter)
+			if (character == this) continue;
+			if (character == _grappleTarget) continue;
+
+			Vector2 toChar = character.Position - origin;
+			float dist = toChar.Length();
+			if (dist < 0.01f) continue;
+
+			// Check if within cone distance
+			if (dist > coneDistance) continue;
+
+			// Check if within cone angle
+			float charAngle = Mathf.Atan2(toChar.Y, toChar.X);
+			float angleDiff = charAngle - coneAngle;
+			// Normalize to -PI to PI
+			while (angleDiff > Mathf.Pi) angleDiff -= Mathf.Tau;
+			while (angleDiff < -Mathf.Pi) angleDiff += Mathf.Tau;
+
+			if (Mathf.Abs(angleDiff) <= halfSpread)
+			{
+				character.ApplyBloodSplatter();
+				GD.Print($"[Stab] {character.CharacterName} got splattered with blood!");
+			}
+		}
+	}
+
+	/// <summary>
+	/// Cover this character in blood speckles for 20 seconds.
+	/// </summary>
+	public void ApplyBloodSplatter()
+	{
+		// Reset timer if already splattered
+		_bloodSplatterTimer = BloodSplatterDuration;
+
+		// Don't create a new overlay if one already exists
+		if (_bloodSplatterOverlay != null) return;
+
+		_bloodSplatterOverlay = new Node2D();
+
+		var rng = new RandomNumberGenerator();
+		rng.Randomize();
+
+		// Sprite frame size for placing speckles (in sprite-local space)
+		float halfW = SpriteFrameWidth / 7f;
+		float halfH = SpriteFrameHeight / 5f;
+
+		for (int i = 0; i < BloodSpeckleCount; i++)
+		{
+			var speckle = new ColorRect();
+
+			// Random size for each speckle
+			float size = rng.RandfRange(2f, 5f);
+			speckle.Size = new Vector2(size, size);
+
+			// Random position within the sprite area
+			speckle.Position = new Vector2(
+				rng.RandfRange(-halfW, halfW) - size / 2f,
+				rng.RandfRange(-halfH, halfH) - size / 2f
+			);
+
+			// Slightly varied red tones
+			float r = rng.RandfRange(0.5f, 0.9f);
+			float g = rng.RandfRange(0f, 0.1f);
+			float b = rng.RandfRange(0f, 0.05f);
+			speckle.Color = new Color(r, g, b, rng.RandfRange(0.6f, 1f));
+
+			_bloodSplatterOverlay.AddChild(speckle);
+		}
+
+		// Add as child of AnimatedSprite2D so ClipChildren masks it to visible pixels
+		_animatedSprite.AddChild(_bloodSplatterOverlay);
+	}
+
+	private void RemoveBloodSplatter()
+	{
+		if (_bloodSplatterOverlay != null && IsInstanceValid(_bloodSplatterOverlay))
+		{
+			_bloodSplatterOverlay.QueueFree();
+			_bloodSplatterOverlay = null;
+			GD.Print($"[Stab] {CharacterName} blood splatter wore off");
+		}
+		_bloodSplatterTimer = 0f;
 	}
 
 	private void SpawnDebugCone(Vector2 origin, float angle, float distance)
