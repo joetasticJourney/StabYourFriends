@@ -27,13 +27,6 @@ class App {
         this.setupControllerScreen();
         this.controller.init();
 
-        // Generate or load device ID for reconnection
-        this.deviceId = localStorage.getItem('deviceId');
-        if (!this.deviceId) {
-            this.deviceId = crypto.randomUUID();
-            localStorage.setItem('deviceId', this.deviceId);
-        }
-
         // Auto-fill server IP from current page host (since HTTP and WebSocket are on same server)
         const currentHost = window.location.hostname || 'localhost';
         document.getElementById('server-ip').value = currentHost;
@@ -43,11 +36,47 @@ class App {
         const savedName = localStorage.getItem('playerName');
         if (savedIp) document.getElementById('server-ip').value = savedIp;
         if (savedName) document.getElementById('player-name').value = savedName;
+
+        // Set cert-accept link (uses page hostname, always correct)
+        this.updateCertLink();
+
+        // Generate or load device ID for reconnection
+        this.deviceId = localStorage.getItem('deviceId');
+        if (!this.deviceId) {
+            const arr = new Uint8Array(16);
+            crypto.getRandomValues(arr);
+            arr[6] = (arr[6] & 0x0f) | 0x40;
+            arr[8] = (arr[8] & 0x3f) | 0x80;
+            const hex = [...arr].map(b => b.toString(16).padStart(2, '0')).join('');
+            this.deviceId = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+            localStorage.setItem('deviceId', this.deviceId);
+        }
+    }
+
+    updateCertLink() {
+        // Use the page's hostname directly — it's always the game server's IP
+        const ip = window.location.hostname || 'localhost';
+        const url = `https://${ip}:8443`;
+        const link = document.getElementById('cert-accept-link');
+        link.href = url;
+        link.textContent = `Accept certificate: ${url}`;
     }
 
     setupControllerScreen() {
         const fullscreenBtn = document.getElementById('fullscreen-btn');
-        fullscreenBtn.addEventListener('click', () => {
+
+        // Hide button if already in standalone/fullscreen mode (launched from home screen)
+        if (window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) {
+            fullscreenBtn.style.display = 'none';
+            return;
+        }
+
+        fullscreenBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.requestFullscreen();
+        }, { passive: false });
+        fullscreenBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
             this.requestFullscreen();
         });
     }
@@ -82,7 +111,7 @@ class App {
 
             const name = document.getElementById('player-name').value.trim();
             const ip = document.getElementById('server-ip').value.trim();
-            const port = document.getElementById('server-port').value || '9443';
+            const port = document.getElementById('server-port').value || '8443';
 
             if (!name || !ip) {
                 errorEl.textContent = 'Please enter your name and server IP';
@@ -92,6 +121,9 @@ class App {
             this.playerName = name;
             localStorage.setItem('serverIp', ip);
             localStorage.setItem('playerName', name);
+
+            // Init Web Audio during user gesture to unlock AudioContext on iOS
+            this.controller.initAudio();
 
             connectBtn.disabled = true;
             connectBtn.textContent = 'Connecting...';
@@ -221,12 +253,36 @@ class App {
             elem.mozRequestFullScreen();
         } else if (elem.msRequestFullscreen) {
             elem.msRequestFullscreen();
+        } else {
+            this.showIOSFullscreenTip();
+            return;
         }
 
         // Also try to lock screen orientation to portrait
         if (screen.orientation && screen.orientation.lock) {
             screen.orientation.lock('portrait').catch(err => console.log('Orientation lock error:', err));
         }
+    }
+
+    showIOSFullscreenTip() {
+        if (window.navigator.standalone) return;
+        if (document.getElementById('ios-fullscreen-tip')) return;
+
+        const tip = document.createElement('div');
+        tip.id = 'ios-fullscreen-tip';
+        tip.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:14px 20px;background:rgba(233,69,96,0.95);color:#fff;text-align:center;font-size:0.9rem;z-index:9999;';
+        tip.innerHTML = 'Open in <b>Safari</b> → tap <b>Share</b> → <b>Add to Home Screen</b> for fullscreen';
+
+        const close = document.createElement('span');
+        close.textContent = ' ✕';
+        close.style.cssText = 'margin-left:10px;cursor:pointer;font-weight:bold;';
+        close.addEventListener('touchstart', (e) => { e.preventDefault(); tip.remove(); }, { passive: false });
+        close.addEventListener('mousedown', (e) => { e.preventDefault(); tip.remove(); });
+        tip.appendChild(close);
+
+        document.body.appendChild(tip);
+
+        setTimeout(() => tip.remove(), 8000);
     }
 
     exitFullscreen() {

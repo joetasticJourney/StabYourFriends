@@ -34,7 +34,7 @@ export class Connection {
                 console.log('Connection timeout, readyState:', this.ws.readyState);
                 if (this.ws.readyState !== WebSocket.OPEN) {
                     this.ws.close();
-                    reject(new Error('Connection timed out'));
+                    reject(new Error('Connection timed out. You may need to accept the security certificate first.'));
                 }
             }, 5000);
 
@@ -58,11 +58,14 @@ export class Connection {
                 console.error('WebSocket error:', error);
                 clearTimeout(timeout);
                 if (this.onError) this.onError(error);
-                reject(new Error('Connection failed'));
+                // Provide a helpful error message about cert acceptance
+                const certUrl = `https://${ip}:${port}`;
+                reject(new Error(
+                    `Connection failed. Open ${certUrl} in a new tab, accept the certificate, then try again.`
+                ));
             };
 
             this.ws.onmessage = (event) => {
-                console.log('Received message:', event.data);
                 try {
                     const message = JSON.parse(event.data);
                     if (this.onMessage) this.onMessage(message);
@@ -83,7 +86,6 @@ export class Connection {
 
     send(message) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            //console.log('Sending message:', message);
             this.ws.send(JSON.stringify(message));
         } else {
             console.warn('Cannot send, WebSocket not open. State:', this.ws?.readyState);

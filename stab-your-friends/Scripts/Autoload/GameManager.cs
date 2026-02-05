@@ -33,7 +33,7 @@ public partial class GameManager : Node
 
 	public IReadOnlyDictionary<string, PlayerController> Players => _players;
 	public string ServerIpAddress => WebSocketServer.GetLocalIpAddress();
-	public int ServerPort => _server?.Port ?? 9443;
+	public int ServerPort => _httpServer?.Port ?? 8443;
 	public string CurrentGameMode { get; private set; } = "";
 	public bool IsGameInProgress { get; private set; }
 	public GameSettings CurrentSettings { get; set; } = new();
@@ -50,7 +50,11 @@ public partial class GameManager : Node
 	{
 		GD.Print("=== GameManager _Ready ===");
 
-		// Start WebSocket server for game communication
+		// Generate TLS certificate with the server's LAN IP in SANs
+		var lanIp = WebSocketServer.GetLocalIpAddress();
+		TlsCertificateManager.EnsureCertificateExists(lanIp);
+
+		// Start WebSocket server for game communication (same port as HTTPS)
 		_server = new WebSocketServer();
 		AddChild(_server);
 
@@ -58,8 +62,10 @@ public partial class GameManager : Node
 		_server.ClientDisconnected += OnClientDisconnected;
 		_server.MessageReceived += OnMessageReceived;
 
-		// Start HTTP server to serve web client files
+		// Start HTTP server to serve web client files (same port handles WS upgrades)
 		_httpServer = new HttpFileServer();
+		_httpServer.WebSocketUpgraded += (tcpPeer, tlsPeer) =>
+			_server.AcceptUpgradedConnection(tcpPeer, tlsPeer);
 		AddChild(_httpServer);
 
 		GD.Print("=== Servers started ===");

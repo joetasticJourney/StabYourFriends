@@ -1019,10 +1019,23 @@ public partial class StabCharacter : CharacterBody2D
 	private void StartGrapple(StabCharacter target)
 	{
 		_swordHitPlayer?.Play();
+		
 
 		if (GrappleDamage > 0)
 		{
-			Vector2 stabDirection = (target.Position - Position).Normalized();
+			Vector2 stabDirection;
+			Vector2 inputmove = new Vector2(_controller.CurrentInput.Movement.X, _controller.CurrentInput.Movement.Y);
+
+			if( inputmove.LengthSquared() > 0.02)
+			{
+				stabDirection = inputmove.Normalized();
+
+			}
+			else
+			{
+				stabDirection = (target.Position - Position).Normalized();
+			}
+
 			SpawnStabParticles(target.GlobalPosition, stabDirection);
 			target.TakeDamage(GrappleDamage, this);
 

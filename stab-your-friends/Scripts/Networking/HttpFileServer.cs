@@ -3,18 +3,31 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using Godot;
 
 namespace StabYourFriends.Networking;
 
+/// <summary>
+/// HTTPS server that serves web client files and detects WebSocket upgrade
+/// requests, handing them off to WebSocketServer. Runs on a single port (8443)
+/// so iOS Safari only needs to trust one self-signed certificate endpoint.
+/// </summary>
 public partial class HttpFileServer : Node
 {
     [Export] public int Port { get; set; } = 8443;
     [Export] public string WebRootPath { get; set; } = "res://WebClient";
 
     private TcpServer _tcpServer = new();
-    private readonly List<TlsClient> _clients = new();
+    private readonly List<PendingConnection> _clients = new();
+
+    /// <summary>
+    /// Fired when a WebSocket upgrade request is detected and the 101 handshake
+    /// has been completed. The WebSocketServer should subscribe to this to take
+    /// ownership of the connection.
+    /// </summary>
+    public event Action<StreamPeerTcp, StreamPeerTls>? WebSocketUpgraded;
 
     private static readonly Dictionary<string, string> MimeTypes = new()
     {
@@ -28,31 +41,24 @@ public partial class HttpFileServer : Node
         { ".gif", "image/gif" },
         { ".svg", "image/svg+xml" },
         { ".ico", "image/x-icon" },
+        { ".mp3", "audio/mpeg" },
+        { ".wav", "audio/wav" },
+        { ".ogg", "audio/ogg" },
     };
 
-    private class TlsClient
+    private enum ConnState { TcpAccept, TlsHandshake, WaitRequest, Done, Upgraded, Error }
+
+    private class PendingConnection
     {
         public StreamPeerTcp TcpPeer { get; }
         public StreamPeerTls? TlsPeer { get; set; }
-        public TlsState State { get; set; } = TlsState.Accepting;
+        public ConnState State { get; set; } = ConnState.TcpAccept;
 
-        public TlsClient(StreamPeerTcp tcpPeer)
-        {
-            TcpPeer = tcpPeer;
-        }
-    }
-
-    private enum TlsState
-    {
-        Accepting,
-        Handshaking,
-        Connected,
-        Error
+        public PendingConnection(StreamPeerTcp tcp) { TcpPeer = tcp; }
     }
 
     public override void _Ready()
     {
-        TlsCertificateManager.EnsureCertificateExists();
         StartServer();
     }
 
@@ -61,155 +67,169 @@ public partial class HttpFileServer : Node
         var error = _tcpServer.Listen((ushort)Port, "*");
         if (error != Error.Ok)
         {
-            GD.PrintErr($"HTTPS server failed to start on port {Port}: {error}");
+            GD.PrintErr($"HTTPS file server failed to start on port {Port}: {error}");
             return;
         }
 
-        GD.Print($"HTTPS server listening on port {Port}");
-        GD.Print($"Open https://localhost:{Port} or https://{WebSocketServer.GetLocalIpAddress()}:{Port}");
+        GD.Print($"HTTPS file server listening on port {Port}");
+        GD.Print($"Open https://{WebSocketServer.GetLocalIpAddress()}:{Port}");
     }
 
     public override void _Process(double delta)
     {
         if (!_tcpServer.IsListening()) return;
 
-        // Accept new connections
         while (_tcpServer.IsConnectionAvailable())
         {
             var tcpPeer = _tcpServer.TakeConnection();
             if (tcpPeer != null)
             {
-                var client = new TlsClient(tcpPeer);
-                _clients.Add(client);
+                _clients.Add(new PendingConnection(tcpPeer));
             }
         }
 
-        // Process clients
         for (int i = _clients.Count - 1; i >= 0; i--)
         {
-            var client = _clients[i];
-            ProcessClient(client, i);
+            var c = _clients[i];
+            c.TcpPeer.Poll();
+
+            switch (c.State)
+            {
+                case ConnState.TcpAccept:
+                    if (c.TcpPeer.GetStatus() == StreamPeerTcp.Status.Connected)
+                    {
+                        c.TlsPeer = new StreamPeerTls();
+                        var err = c.TlsPeer.AcceptStream(c.TcpPeer, TlsCertificateManager.GetServerTlsOptions());
+                        c.State = err == Error.Ok ? ConnState.TlsHandshake : ConnState.Error;
+                    }
+                    else if (c.TcpPeer.GetStatus() != StreamPeerTcp.Status.Connecting)
+                        c.State = ConnState.Error;
+                    break;
+
+                case ConnState.TlsHandshake:
+                    c.TlsPeer!.Poll();
+                    var s = c.TlsPeer.GetStatus();
+                    if (s == StreamPeerTls.Status.Connected)
+                        c.State = ConnState.WaitRequest;
+                    else if (s != StreamPeerTls.Status.Handshaking)
+                        c.State = ConnState.Error;
+                    break;
+
+                case ConnState.WaitRequest:
+                    c.TlsPeer!.Poll();
+                    if (c.TlsPeer.GetStatus() != StreamPeerTls.Status.Connected)
+                    {
+                        c.State = ConnState.Error;
+                        break;
+                    }
+                    if (c.TlsPeer.GetAvailableBytes() > 0)
+                    {
+                        var isUpgrade = HandleRequest(c);
+                        c.State = isUpgrade ? ConnState.Upgraded : ConnState.Done;
+                    }
+                    break;
+
+                case ConnState.Done:
+                case ConnState.Error:
+                    _clients.RemoveAt(i);
+                    break;
+
+                case ConnState.Upgraded:
+                    // Connection handed off to WebSocketServer — remove without closing
+                    _clients.RemoveAt(i);
+                    break;
+            }
         }
     }
 
-    private void ProcessClient(TlsClient client, int index)
+    /// <summary>
+    /// Returns true if this was a WebSocket upgrade (connection handed off),
+    /// false for a normal HTTP request (connection can be closed).
+    /// </summary>
+    private bool HandleRequest(PendingConnection conn)
     {
-        client.TcpPeer.Poll();
-
-        switch (client.State)
-        {
-            case TlsState.Accepting:
-                var tcpStatus = client.TcpPeer.GetStatus();
-                if (tcpStatus == StreamPeerTcp.Status.Connected)
-                {
-                    // Start TLS handshake
-                    client.TlsPeer = new StreamPeerTls();
-                    var tlsOptions = TlsCertificateManager.GetServerTlsOptions();
-                    var err = client.TlsPeer.AcceptStream(client.TcpPeer, tlsOptions);
-                    if (err != Error.Ok)
-                    {
-                        GD.PrintErr($"TLS accept failed: {err}");
-                        client.State = TlsState.Error;
-                    }
-                    else
-                    {
-                        client.State = TlsState.Handshaking;
-                    }
-                }
-                else if (tcpStatus == StreamPeerTcp.Status.Error || tcpStatus == StreamPeerTcp.Status.None)
-                {
-                    client.State = TlsState.Error;
-                }
-                break;
-
-            case TlsState.Handshaking:
-                var tlsStatus = client.TlsPeer!.GetStatus();
-                // Only poll if still handshaking or connected
-                if (tlsStatus == StreamPeerTls.Status.Handshaking || tlsStatus == StreamPeerTls.Status.Connected)
-                {
-                    client.TlsPeer.Poll();
-                    tlsStatus = client.TlsPeer.GetStatus();
-                }
-
-                if (tlsStatus == StreamPeerTls.Status.Connected)
-                {
-                    client.State = TlsState.Connected;
-                }
-                else if (tlsStatus == StreamPeerTls.Status.Error || tlsStatus == StreamPeerTls.Status.ErrorHostnameMismatch)
-                {
-                    client.State = TlsState.Error;
-                }
-                break;
-
-            case TlsState.Connected:
-                var connectedStatus = client.TlsPeer!.GetStatus();
-                if (connectedStatus != StreamPeerTls.Status.Connected)
-                {
-                    _clients.RemoveAt(index);
-                    break;
-                }
-
-                client.TlsPeer.Poll();
-
-                // Re-check status after poll — the peer may have disconnected
-                if (client.TlsPeer.GetStatus() != StreamPeerTls.Status.Connected)
-                {
-                    _clients.RemoveAt(index);
-                    break;
-                }
-
-                if (client.TlsPeer.GetAvailableBytes() > 0)
-                {
-                    HandleRequest(client.TlsPeer);
-                    _clients.RemoveAt(index);
-                }
-                break;
-
-            case TlsState.Error:
-                _clients.RemoveAt(index);
-                break;
-        }
-    }
-
-    private void HandleRequest(StreamPeerTls client)
-    {
-        var data = client.GetUtf8String(client.GetAvailableBytes());
+        var tls = conn.TlsPeer!;
+        var data = tls.GetUtf8String(tls.GetAvailableBytes());
         var lines = data.Split('\n');
 
-        if (lines.Length == 0) return;
+        if (lines.Length == 0) return false;
 
         var requestLine = lines[0].Trim();
         var parts = requestLine.Split(' ');
 
-        if (parts.Length < 2) return;
+        if (parts.Length < 2) return false;
 
         var method = parts[0];
         var path = parts[1];
 
-        if (method != "GET")
+        // Parse headers
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 1; i < lines.Length; i++)
         {
-            SendResponse(client, 405, "Method Not Allowed", "text/plain", "Method Not Allowed");
-            return;
+            var line = lines[i].Trim();
+            if (string.IsNullOrEmpty(line)) break;
+            var colonIdx = line.IndexOf(':');
+            if (colonIdx > 0)
+            {
+                var key = line[..colonIdx].Trim();
+                var value = line[(colonIdx + 1)..].Trim();
+                headers[key] = value;
+            }
         }
 
-        // Default to index.html
+        // Check for WebSocket upgrade
+        if (method == "GET" &&
+            headers.TryGetValue("Upgrade", out var upgrade) &&
+            upgrade.Equals("websocket", StringComparison.OrdinalIgnoreCase) &&
+            headers.TryGetValue("Sec-WebSocket-Key", out var wsKey))
+        {
+            CompleteWebSocketUpgrade(conn, wsKey);
+            return true;
+        }
+
+        // Normal HTTP request
+        if (method != "GET")
+        {
+            SendResponse(tls, 405, "Method Not Allowed", "text/plain", "Method Not Allowed");
+            return false;
+        }
+
         if (path == "/") path = "/index.html";
 
-        // Remove query string
         var queryIndex = path.IndexOf('?');
         if (queryIndex >= 0) path = path[..queryIndex];
 
         // Security: prevent directory traversal
         path = path.Replace("..", "");
 
-        ServeFile(client, path);
+        ServeFile(tls, path);
+        return false;
+    }
+
+    private void CompleteWebSocketUpgrade(PendingConnection conn, string wsKey)
+    {
+        // Compute Sec-WebSocket-Accept per RFC 6455
+        var magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+        var combined = wsKey + magic;
+        var hash = SHA1.HashData(Encoding.UTF8.GetBytes(combined));
+        var accept = Convert.ToBase64String(hash);
+
+        var response = "HTTP/1.1 101 Switching Protocols\r\n" +
+                       "Upgrade: websocket\r\n" +
+                       "Connection: Upgrade\r\n" +
+                       $"Sec-WebSocket-Accept: {accept}\r\n" +
+                       "\r\n";
+
+        conn.TlsPeer!.PutData(Encoding.UTF8.GetBytes(response));
+
+        GD.Print("WebSocket upgrade handshake completed, handing off connection...");
+        WebSocketUpgraded?.Invoke(conn.TcpPeer, conn.TlsPeer);
     }
 
     private void ServeFile(StreamPeerTls client, string path)
     {
         var fullPath = WebRootPath + path;
 
-        // Try to load the file using Godot's resource system
         if (!Godot.FileAccess.FileExists(fullPath))
         {
             SendResponse(client, 404, "Not Found", "text/plain", "File not found");
@@ -221,7 +241,6 @@ public partial class HttpFileServer : Node
 
         byte[] content;
 
-        // For text files, read as text
         if (mimeType.StartsWith("text/") || mimeType == "application/javascript" || mimeType == "application/json")
         {
             var file = Godot.FileAccess.Open(fullPath, Godot.FileAccess.ModeFlags.Read);
@@ -236,7 +255,6 @@ public partial class HttpFileServer : Node
         }
         else
         {
-            // Binary files
             var file = Godot.FileAccess.Open(fullPath, Godot.FileAccess.ModeFlags.Read);
             if (file == null)
             {
@@ -265,11 +283,11 @@ public partial class HttpFileServer : Node
                      "\r\n";
 
         var headerBytes = Encoding.UTF8.GetBytes(header);
-        var response = new byte[headerBytes.Length + body.Length];
-        headerBytes.CopyTo(response, 0);
-        body.CopyTo(response, headerBytes.Length);
+        var responseBytes = new byte[headerBytes.Length + body.Length];
+        headerBytes.CopyTo(responseBytes, 0);
+        body.CopyTo(responseBytes, headerBytes.Length);
 
-        client.PutData(response);
+        client.PutData(responseBytes);
         client.DisconnectFromStream();
     }
 

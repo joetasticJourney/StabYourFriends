@@ -27,10 +27,10 @@ export class Controller {
         this.motionListenerActive = false;
         this.debugMotion = false; // Set to true to log motion values
 
-        // Audio context for shake sound
+        // Web Audio API for low-latency sound
         this.audioContext = null;
-        this.gotchaAudio = new Audio('Sounds/gotcha.mp3');
-        this.stabAudio = new Audio('Sounds/Stab.mp3');
+        this.gotchaBuffer = null;
+        this.stabBuffer = null;
 
         // Stab mode (activated when grappling)
         this.stabMode = true;
@@ -329,7 +329,12 @@ export class Controller {
 
         window.addEventListener('deviceorientation', (event) => {
             if (event.alpha !== null) {
-                this.orientAlpha = event.alpha;
+                let alpha = event.alpha;
+                // If phone is upside down (beta outside -90..90), flip 180 degrees
+                if (event.beta !== null && (event.beta > 90 || event.beta < -90)) {
+                    alpha = (alpha + 180) % 360;
+                }
+                this.orientAlpha = alpha;
             }
         });
     }
@@ -342,8 +347,7 @@ export class Controller {
         console.log('Stab speed:', newStabSpeed);
 
         if (!wasStabMode && this.stabMode) {
-            this.gotchaAudio.currentTime = 0;
-            this.gotchaAudio.play().catch(e => console.log('Audio play failed:', e));
+            this.playBuffer(this.gotchaBuffer);
         }
     }
 
@@ -359,9 +363,6 @@ export class Controller {
     handleDeviceMotion(event) {
         // Try accelerationIncludingGravity first, fall back to acceleration
         const acceleration = event.accelerationIncludingGravity || event.acceleration;
-
-        console.log('CHECK Stab mode:', this.stabMode ? 'ON' : 'OFF');
-        console.log('CHECK Stab speed:', this.stabSpeed);
 
         if (!this.stabMode || !acceleration || (acceleration.x === null && acceleration.y === null && acceleration.z === null)) {
             return;
@@ -411,9 +412,44 @@ export class Controller {
         }
     }
 
+    async initAudio() {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.audioContext = new AudioCtx();
+            await this.audioContext.resume();
+
+            const [gotchaResp, stabResp] = await Promise.all([
+                fetch('Sounds/gotcha.mp3'),
+                fetch('Sounds/Stab.mp3')
+            ]);
+            const [gotchaData, stabData] = await Promise.all([
+                gotchaResp.arrayBuffer(),
+                stabResp.arrayBuffer()
+            ]);
+            [this.gotchaBuffer, this.stabBuffer] = await Promise.all([
+                this.audioContext.decodeAudioData(gotchaData),
+                this.audioContext.decodeAudioData(stabData)
+            ]);
+            console.log('Audio buffers decoded');
+        } catch (e) {
+            console.error('Failed to init audio:', e);
+        }
+    }
+
+    playBuffer(buffer) {
+        try {
+            if (!this.audioContext || !buffer) return;
+            const source = this.audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(this.audioContext.destination);
+            source.start(0);
+        } catch (e) {
+            // silently ignore playback errors
+        }
+    }
+
     playShakeSound() {
-        this.stabAudio.currentTime = 0;
-        this.stabAudio.play().catch(e => console.log('Audio play failed:', e));
+        this.playBuffer(this.stabBuffer);
     }
 
     startSendingInput() {

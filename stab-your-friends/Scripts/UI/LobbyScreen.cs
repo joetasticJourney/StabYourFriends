@@ -45,7 +45,7 @@ public partial class LobbyScreen : Control
     private void GenerateQRCode()
     {
         var ip = GameManager.Instance.ServerIpAddress;
-        var port = 8443; // HTTPS server port
+        var port = GameManager.Instance.ServerPort;
         var url = $"https://{ip}:{port}";
 
         _urlLabel.Text = url;

@@ -108,6 +108,16 @@ html, body {
     font-size: 0.9rem;
 }
 
+.cert-link {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+}
+
+.cert-link a {
+    color: #aaa;
+    text-decoration: underline;
+}
+
 /* Lobby Screen */
 .lobby-container {
     width: 100%;

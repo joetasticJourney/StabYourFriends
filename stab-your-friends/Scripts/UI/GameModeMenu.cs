@@ -48,30 +48,24 @@ public partial class GameModeMenu : Control
         bg.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(bg);
 
-        // Main panel - large and opaque
+        // Main panel - nearly full screen
         var panel = new Panel();
-        panel.SetAnchorsPreset(LayoutPreset.Center);
-        panel.GrowHorizontal = GrowDirection.Both;
-        panel.GrowVertical = GrowDirection.Both;
-        panel.OffsetLeft = -350;
-        panel.OffsetRight = 350;
-        panel.OffsetTop = -350;
-        panel.OffsetBottom = 350;
+        panel.SetAnchorsPreset(LayoutPreset.FullRect);
+        panel.OffsetLeft = 40;
+        panel.OffsetRight = -40;
+        panel.OffsetTop = 30;
+        panel.OffsetBottom = -30;
         AddChild(panel);
 
-        // ScrollContainer to handle overflow
-        var scroll = new ScrollContainer();
-        scroll.SetAnchorsPreset(LayoutPreset.FullRect);
-        scroll.OffsetLeft = 25;
-        scroll.OffsetTop = 25;
-        scroll.OffsetRight = -25;
-        scroll.OffsetBottom = -25;
-        panel.AddChild(scroll);
-
+        // Main vertical layout with padding
         var vbox = new VBoxContainer();
-        vbox.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        vbox.AddThemeConstantOverride("separation", 10);
-        scroll.AddChild(vbox);
+        vbox.SetAnchorsPreset(LayoutPreset.FullRect);
+        vbox.OffsetLeft = 30;
+        vbox.OffsetRight = -30;
+        vbox.OffsetTop = 20;
+        vbox.OffsetBottom = -20;
+        vbox.AddThemeConstantOverride("separation", 6);
+        panel.AddChild(vbox);
 
         // ── Title ──
         var title = new Label();
@@ -82,13 +76,24 @@ public partial class GameModeMenu : Control
 
         AddSeparator(vbox);
 
-        // ── Game Time Section ──
-        AddSectionHeader(vbox, "Game Time");
+        // ── Top row: Game Time + Power-Ups side by side ──
+        var topColumns = new HBoxContainer();
+        topColumns.AddThemeConstantOverride("separation", 40);
+        topColumns.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        vbox.AddChild(topColumns);
+
+        // Left column: Game Time
+        var timeCol = new VBoxContainer();
+        timeCol.AddThemeConstantOverride("separation", 6);
+        timeCol.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        topColumns.AddChild(timeCol);
+
+        AddSectionHeader(timeCol, "Game Time");
 
         var timeRow = new HBoxContainer();
         timeRow.AddThemeConstantOverride("separation", 10);
         timeRow.Alignment = BoxContainer.AlignmentMode.Center;
-        vbox.AddChild(timeRow);
+        timeCol.AddChild(timeRow);
 
         var minusBtn = new Button();
         minusBtn.Text = "-30s";
@@ -110,16 +115,19 @@ public partial class GameModeMenu : Control
 
         UpdateTimeLabel();
 
-        AddSeparator(vbox);
+        // Right column: Power-Ups
+        var powerCol = new VBoxContainer();
+        powerCol.AddThemeConstantOverride("separation", 4);
+        powerCol.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        topColumns.AddChild(powerCol);
 
-        // ── Power-Ups Section ──
-        AddSectionHeader(vbox, "Power-Ups");
+        AddSectionHeader(powerCol, "Power-Ups");
 
         var powerUpGrid = new GridContainer();
-        powerUpGrid.Columns = 2;
-        powerUpGrid.AddThemeConstantOverride("h_separation", 30);
-        powerUpGrid.AddThemeConstantOverride("v_separation", 6);
-        vbox.AddChild(powerUpGrid);
+        powerUpGrid.Columns = 3;
+        powerUpGrid.AddThemeConstantOverride("h_separation", 20);
+        powerUpGrid.AddThemeConstantOverride("v_separation", 4);
+        powerCol.AddChild(powerUpGrid);
 
         _victoryPointCheck = CreateCheckBox("Victory Points", true);
         _kungFuCheck = CreateCheckBox("Kung Fu", true);
@@ -135,150 +143,100 @@ public partial class GameModeMenu : Control
 
         AddSeparator(vbox);
 
-        // ── Game Options Section ──
-        AddSectionHeader(vbox, "Game Options");
+        // ── Sliders in two-column layout ──
+        var sliderColumns = new HBoxContainer();
+        sliderColumns.AddThemeConstantOverride("separation", 40);
+        sliderColumns.SizeFlagsVertical = SizeFlags.ExpandFill;
+        vbox.AddChild(sliderColumns);
 
-        AddSectionHeader(vbox, "Grapple Damage");
+        // Left slider column
+        var leftCol = new VBoxContainer();
+        leftCol.AddThemeConstantOverride("separation", 6);
+        leftCol.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        sliderColumns.AddChild(leftCol);
 
-        var grappleDamageRow = new HBoxContainer();
-        grappleDamageRow.AddThemeConstantOverride("separation", 10);
-        vbox.AddChild(grappleDamageRow);
+        // Grapple Damage
+        AddSliderRow(leftCol, "Grapple Damage", 0, 10, 1, 1,
+            out _grappleDamageSlider, out _grappleDamageValueLabel, OnGrappleDamageChanged);
 
-        _grappleDamageSlider = new HSlider();
-        _grappleDamageSlider.MinValue = 0;
-        _grappleDamageSlider.MaxValue = 10;
-        _grappleDamageSlider.Step = 1;
-        _grappleDamageSlider.Value = 1;
-        _grappleDamageSlider.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _grappleDamageSlider.CustomMinimumSize = new Vector2(0, 30);
-        _grappleDamageSlider.ValueChanged += OnGrappleDamageChanged;
-        grappleDamageRow.AddChild(_grappleDamageSlider);
+        // Player Move Speed
+        AddSliderRow(leftCol, "Player Move Speed", 25, 200, 5, 100,
+            out _speedSlider, out _speedValueLabel, OnSpeedChanged);
 
-        _grappleDamageValueLabel = new Label();
-        _grappleDamageValueLabel.Text = "1";
-        _grappleDamageValueLabel.CustomMinimumSize = new Vector2(40, 0);
-        _grappleDamageValueLabel.HorizontalAlignment = HorizontalAlignment.Right;
-        grappleDamageRow.AddChild(_grappleDamageValueLabel);
+        // Player Bonus Speed
+        AddSliderRow(leftCol, "Player Bonus Speed", 25, 200, 5, 100,
+            out _bonusSpeedSlider, out _bonusSpeedValueLabel, OnBonusSpeedChanged);
 
+        // Right slider column
+        var rightCol = new VBoxContainer();
+        rightCol.AddThemeConstantOverride("separation", 6);
+        rightCol.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        sliderColumns.AddChild(rightCol);
+
+        // Color Blind Mode
         _colorBlindCheck = CreateCheckBox("Color Blind Mode", false);
-        vbox.AddChild(_colorBlindCheck);
+        rightCol.AddChild(_colorBlindCheck);
 
-        AddSeparator(vbox);
+        // Power-Up Spawn Interval
+        AddSliderRow(rightCol, "Power-Up Spawn (sec)", 1, 30, 1, 3,
+            out _powerUpSpawnSlider, out _powerUpSpawnValueLabel, OnPowerUpSpawnChanged);
 
-        // ── Player Speed Section ──
-        AddSectionHeader(vbox, "Player Move Speed");
-
-        var speedRow = new HBoxContainer();
-        speedRow.AddThemeConstantOverride("separation", 10);
-        vbox.AddChild(speedRow);
-
-        _speedSlider = new HSlider();
-        _speedSlider.MinValue = 25;
-        _speedSlider.MaxValue = 200;
-        _speedSlider.Step = 5;
-        _speedSlider.Value = 100;
-        _speedSlider.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _speedSlider.CustomMinimumSize = new Vector2(0, 30);
-        _speedSlider.ValueChanged += OnSpeedChanged;
-        speedRow.AddChild(_speedSlider);
-
-        _speedValueLabel = new Label();
-        _speedValueLabel.Text = "100";
-        _speedValueLabel.CustomMinimumSize = new Vector2(40, 0);
-        _speedValueLabel.HorizontalAlignment = HorizontalAlignment.Right;
-        speedRow.AddChild(_speedValueLabel);
-
-        AddSeparator(vbox);
-
-        // ── Player Bonus Speed Section ──
-        AddSectionHeader(vbox, "Player Bonus Speed");
-
-        var bonusSpeedRow = new HBoxContainer();
-        bonusSpeedRow.AddThemeConstantOverride("separation", 10);
-        vbox.AddChild(bonusSpeedRow);
-
-        _bonusSpeedSlider = new HSlider();
-        _bonusSpeedSlider.MinValue = 25;
-        _bonusSpeedSlider.MaxValue = 200;
-        _bonusSpeedSlider.Step = 5;
-        _bonusSpeedSlider.Value = 100;
-        _bonusSpeedSlider.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _bonusSpeedSlider.CustomMinimumSize = new Vector2(0, 30);
-        _bonusSpeedSlider.ValueChanged += OnBonusSpeedChanged;
-        bonusSpeedRow.AddChild(_bonusSpeedSlider);
-
-        _bonusSpeedValueLabel = new Label();
-        _bonusSpeedValueLabel.Text = "100";
-        _bonusSpeedValueLabel.CustomMinimumSize = new Vector2(40, 0);
-        _bonusSpeedValueLabel.HorizontalAlignment = HorizontalAlignment.Right;
-        bonusSpeedRow.AddChild(_bonusSpeedValueLabel);
-
-        AddSeparator(vbox);
-
-        // ── Spawn Intervals Section ──
-        AddSectionHeader(vbox, "Power-Up Spawn Interval (seconds)");
-
-        var powerUpSpawnRow = new HBoxContainer();
-        powerUpSpawnRow.AddThemeConstantOverride("separation", 10);
-        vbox.AddChild(powerUpSpawnRow);
-
-        _powerUpSpawnSlider = new HSlider();
-        _powerUpSpawnSlider.MinValue = 1;
-        _powerUpSpawnSlider.MaxValue = 30;
-        _powerUpSpawnSlider.Step = 1;
-        _powerUpSpawnSlider.Value = 3;
-        _powerUpSpawnSlider.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _powerUpSpawnSlider.CustomMinimumSize = new Vector2(0, 30);
-        _powerUpSpawnSlider.ValueChanged += OnPowerUpSpawnChanged;
-        powerUpSpawnRow.AddChild(_powerUpSpawnSlider);
-
-        _powerUpSpawnValueLabel = new Label();
-        _powerUpSpawnValueLabel.Text = "3";
-        _powerUpSpawnValueLabel.CustomMinimumSize = new Vector2(40, 0);
-        _powerUpSpawnValueLabel.HorizontalAlignment = HorizontalAlignment.Right;
-        powerUpSpawnRow.AddChild(_powerUpSpawnValueLabel);
-
-        AddSectionHeader(vbox, "VIP Spawn Interval (seconds)");
-
-        var vipSpawnRow = new HBoxContainer();
-        vipSpawnRow.AddThemeConstantOverride("separation", 10);
-        vbox.AddChild(vipSpawnRow);
-
-        _vipSpawnSlider = new HSlider();
-        _vipSpawnSlider.MinValue = 5;
-        _vipSpawnSlider.MaxValue = 60;
-        _vipSpawnSlider.Step = 1;
-        _vipSpawnSlider.Value = 12;
-        _vipSpawnSlider.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _vipSpawnSlider.CustomMinimumSize = new Vector2(0, 30);
-        _vipSpawnSlider.ValueChanged += OnVipSpawnChanged;
-        vipSpawnRow.AddChild(_vipSpawnSlider);
-
-        _vipSpawnValueLabel = new Label();
-        _vipSpawnValueLabel.Text = "12";
-        _vipSpawnValueLabel.CustomMinimumSize = new Vector2(40, 0);
-        _vipSpawnValueLabel.HorizontalAlignment = HorizontalAlignment.Right;
-        vipSpawnRow.AddChild(_vipSpawnValueLabel);
+        // VIP Spawn Interval
+        AddSliderRow(rightCol, "VIP Spawn (sec)", 5, 60, 1, 12,
+            out _vipSpawnSlider, out _vipSpawnValueLabel, OnVipSpawnChanged);
 
         AddSeparator(vbox);
 
         // ── Bottom Buttons ──
-        var spacer = new Control();
-        spacer.CustomMinimumSize = new Vector2(0, 5);
-        vbox.AddChild(spacer);
-
-        _launchButton = new Button();
-        _launchButton.Text = "Launch Game";
-        _launchButton.CustomMinimumSize = new Vector2(0, 50);
-        _launchButton.AddThemeFontSizeOverride("font_size", 22);
-        _launchButton.Pressed += OnLaunchPressed;
-        vbox.AddChild(_launchButton);
+        var buttonRow = new HBoxContainer();
+        buttonRow.AddThemeConstantOverride("separation", 20);
+        buttonRow.Alignment = BoxContainer.AlignmentMode.Center;
+        vbox.AddChild(buttonRow);
 
         _cancelButton = new Button();
         _cancelButton.Text = "Cancel";
-        _cancelButton.CustomMinimumSize = new Vector2(0, 40);
+        _cancelButton.CustomMinimumSize = new Vector2(200, 50);
         _cancelButton.Pressed += OnCancelPressed;
-        vbox.AddChild(_cancelButton);
+        buttonRow.AddChild(_cancelButton);
+
+        _launchButton = new Button();
+        _launchButton.Text = "Launch Game";
+        _launchButton.CustomMinimumSize = new Vector2(300, 50);
+        _launchButton.AddThemeFontSizeOverride("font_size", 22);
+        _launchButton.Pressed += OnLaunchPressed;
+        buttonRow.AddChild(_launchButton);
+    }
+
+    private void AddSliderRow(VBoxContainer parent, string label,
+        double min, double max, double step, double defaultVal,
+        out HSlider slider, out Label valueLabel,
+        HSlider.ValueChangedEventHandler onChanged)
+    {
+        var header = new Label();
+        header.Text = label;
+        header.AddThemeFontSizeOverride("font_size", 16);
+        header.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.5f));
+        parent.AddChild(header);
+
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        parent.AddChild(row);
+
+        slider = new HSlider();
+        slider.MinValue = min;
+        slider.MaxValue = max;
+        slider.Step = step;
+        slider.Value = defaultVal;
+        slider.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        slider.CustomMinimumSize = new Vector2(0, 25);
+        slider.ValueChanged += onChanged;
+        row.AddChild(slider);
+
+        valueLabel = new Label();
+        valueLabel.Text = ((int)defaultVal).ToString();
+        valueLabel.CustomMinimumSize = new Vector2(40, 0);
+        valueLabel.HorizontalAlignment = HorizontalAlignment.Right;
+        row.AddChild(valueLabel);
     }
 
     private CheckBox CreateCheckBox(string text, bool defaultOn)
