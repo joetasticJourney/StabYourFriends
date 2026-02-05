@@ -76,6 +76,7 @@ public partial class GameWorld : Node2D
 	{
 		// Apply game settings from lobby
 		_settings = GameManager.Instance.CurrentSettings;
+		GameManager.Instance.ControllerMode = _settings.ControllerMode;
 		GameDurationSeconds = _settings.GameDurationSeconds;
 		_powerUpSpawnInterval = _settings.PowerUpSpawnInterval;
 		_vipSpawnInterval = _settings.VipSpawnInterval;
@@ -763,25 +764,29 @@ public partial class GameWorld : Node2D
 		// Build rankings and show victory screen
 		var rankings = BuildRankings(lastPlayerStanding);
 		string winnerName = rankings.Count > 0 ? rankings[0].Name : "";
+		string winnerPlayerId = rankings.Count > 0 ? rankings[0].PlayerId : "";
 
 		var victoryScreen = new VictoryScreen();
 		victoryScreen.SetAnchorsPreset(Control.LayoutPreset.FullRect);
 		_uiLayer.AddChild(victoryScreen);
 		victoryScreen.ReturnToLobbyRequested += OnReturnToLobby;
-		victoryScreen.Show(winnerName, rankings);
+		victoryScreen.RestartRequested += OnRestartGame;
+		victoryScreen.Show(winnerName, rankings, winnerPlayerId);
 	}
 
 	private List<PlayerRanking> BuildRankings(bool lastPlayerStanding)
 	{
 		var rankings = new List<PlayerRanking>();
 
-		foreach (var character in _playerCharacters.Values)
+		foreach (var kvp in _playerCharacters)
 		{
+			var character = kvp.Value;
 			if (!IsInstanceValid(character)) continue;
 
 			bool isAlive = !character.IsDead && character.Visible;
 			rankings.Add(new PlayerRanking
 			{
+				PlayerId = kvp.Key,
 				Name = character.CharacterName,
 				Score = character.Score,
 				IsDead = character.IsDead,
@@ -818,6 +823,12 @@ public partial class GameWorld : Node2D
 	{
 		GameManager.Instance.EndGame();
 		GetTree().ChangeSceneToFile("res://Scenes/Main.tscn");
+	}
+
+	private void OnRestartGame()
+	{
+		GameManager.Instance.RestartGame();
+		GetTree().ChangeSceneToFile("res://Scenes/Game/SYFScene.tscn");
 	}
 
 	public override void _ExitTree()

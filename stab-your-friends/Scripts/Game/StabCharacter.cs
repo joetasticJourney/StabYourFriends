@@ -99,7 +99,7 @@ public partial class StabCharacter : CharacterBody2D
 	private float _grappleAngle;
 	private float _initialGrappleDirection;
 	private float _initialPlayerGrappleDirection;
-	private bool _isPlayerInStabPosition;
+
 
 	// Smoke bomb state
 	private int _smokeBombCount;
@@ -301,9 +301,12 @@ public partial class StabCharacter : CharacterBody2D
 		CharacterColor = controller.PlayerColor;
 		_smokeBombCount = 1;
 
+		// Seed previous-button state from current input so that a button
+		// already held at spawn time is not treated as a new press.
+		_action1WasPressed = controller.CurrentInput.Action1;
+		_action2WasPressed = controller.CurrentInput.Action2;
 
 		GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { StabSpeed = 0f });
-	 
 
 		UpdateVisuals();
 	}
@@ -562,7 +565,7 @@ public partial class StabCharacter : CharacterBody2D
 
 				GD.Print($"[Grapple] {CharacterName}: Orbiting {_grappleTarget.CharacterName} - angle={Mathf.RadToDeg(_grappleAngle):F1}°, targetAngle={Mathf.RadToDeg(targetAngle):F1}°");
 			}
-			else
+			else if(!GameManager.Instance.ControllerMode)
 			{
 				// Use phone orientation to orbit around the grapple target
 				float currentAlpha = _controller?.CurrentInput.OrientAlpha ?? 0f;
@@ -574,16 +577,8 @@ public partial class StabCharacter : CharacterBody2D
 
 				GD.Print($"[Grapple] {CharacterName}: Orient diff={alphaDiff:F1}° (current={currentAlpha:F1}°, initial={_initialGrappleDirection:F1}°)");
 
-				if(_isPlayerInStabPosition)
-				{
 					// Set grapple angle directly from orientation offset + initial direction
-					_grappleAngle = Mathf.DegToRad(alphaDiff + 90f);
-				}
-				else
-				{
-					_isPlayerInStabPosition = Mathf.Abs(alphaDiff) <= 10;
-
-				}
+				_grappleAngle = Mathf.DegToRad(alphaDiff + 90f);
 			}
 
 			// Position self at fixed distance from target
@@ -815,15 +810,17 @@ public partial class StabCharacter : CharacterBody2D
 			GD.Print($"[Grapple] {CharacterName}: Cannot act - currently grappled by {_grappledBy?.CharacterName ?? "unknown"}");
 			return;
 		}
-
-		if (_isGrappling)
+        ulong now = Time.GetTicksMsec();
+        if (_isGrappling)
 		{
-			ReleaseGrapple();
+            // 0.5s cooldown between grab attempts
+            if (now - _lastGrabAttemptMsec < (ulong)(GrabCooldownSeconds * 1000))
+                return;
+            ReleaseGrapple();
 		}
 		else
 		{
-			ulong now = Time.GetTicksMsec();
-
+			
 			// 0.5s cooldown between grab attempts
 			if (now - _lastGrabAttemptMsec < (ulong)(GrabCooldownSeconds * 1000))
 				return;
@@ -922,8 +919,8 @@ public partial class StabCharacter : CharacterBody2D
 			return null;
 		}
 
-		float scaledRange = GrappleRange * _scaleFactor;
-		float offset = BaseRadius * _scaleFactor;
+		float scaledRange = GrappleRange * _scaleFactor*1.3f;
+		float offset = BaseRadius * _scaleFactor*1.3f;
 		Vector2 searchCenter = Position + GetFacingVector() * offset;
 		var nearbyCharacters = _gameWorld.GetNearbyCharacters(searchCenter, scaledRange);
 		GD.Print($"[Grapple] {CharacterName}: Found {nearbyCharacters.Count} characters within range {scaledRange}");
@@ -1122,7 +1119,6 @@ public partial class StabCharacter : CharacterBody2D
 
 		_isGrappling = false;
 		_grappleTarget = null;
-		_isPlayerInStabPosition = false;
 
 		if (_playingAttackAnim)
 		{
@@ -1211,7 +1207,7 @@ public partial class StabCharacter : CharacterBody2D
 
 			// Spawn stab particle effect at the grappled target
 			Vector2 stabDirection;
-			if (GameManager.Instance.IsStabModeOn)
+			if (!GameManager.Instance.ControllerMode)
 			{
 				float stabAngleDeg = _initialGrappleDirection - orientAlpha -90f;
 				float stabAngleRad = Mathf.DegToRad(stabAngleDeg);

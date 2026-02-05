@@ -16,7 +16,7 @@ public partial class GameManager : Node
 	public static GameManager Instance { get; private set; } = null!;
 
 	[Export] public int MinPlayersToStart { get; set; } = 1;
-	[Export] public bool IsStabModeOn { get; set; } = true;
+	[Export] public bool ControllerMode { get; set; } = true;
 
 	private WebSocketServer _server = null!;
 	private HttpFileServer _httpServer = null!;
@@ -157,7 +157,7 @@ public partial class GameManager : Node
 
 			if (IsGameInProgress)
 			{
-				client.Send(new GameStartMessage { GameMode = CurrentGameMode });
+				client.Send(new GameStartMessage { GameMode = CurrentGameMode, ControllerMode = ControllerMode });
 			}
 
 			PlayerReconnected?.Invoke(existingPlayer, oldPlayerId);
@@ -188,7 +188,7 @@ public partial class GameManager : Node
 		// If game is already in progress, send GameStartMessage to switch to controller
 		if (IsGameInProgress)
 		{
-			client.Send(new GameStartMessage { GameMode = CurrentGameMode });
+			client.Send(new GameStartMessage { GameMode = CurrentGameMode, ControllerMode = ControllerMode });
 		}
 
 		PlayerJoined?.Invoke(player);
@@ -252,13 +252,22 @@ public partial class GameManager : Node
 
 		CurrentGameMode = gameMode;
 		IsGameInProgress = true;
+		ControllerMode = CurrentSettings.ControllerMode;
 		GD.Print($"Starting game with mode: {gameMode}");
 
 		// Notify all clients that game is starting
-		_server.Broadcast(new GameStartMessage { GameMode = gameMode });
+		_server.Broadcast(new GameStartMessage { GameMode = gameMode, ControllerMode = ControllerMode });
 
 		// Emit signal for scene transition
 		GameStarted?.Invoke(gameMode);
+	}
+
+	public void RestartGame()
+	{
+		// Re-broadcast GameStartMessage so controllers stay in game mode.
+		// Does NOT reset players, does NOT broadcast gameEnd.
+		_server.Broadcast(new GameStartMessage { GameMode = CurrentGameMode, ControllerMode = ControllerMode });
+		_disconnectedPlayers.Clear();
 	}
 
 	public void EndGame()

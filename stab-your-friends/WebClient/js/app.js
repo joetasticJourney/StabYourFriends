@@ -221,6 +221,9 @@ class App {
         this.gameStarted = true;
         this.showScreen('controller');
 
+        // Configure controller mode (undefined treated as true for backwards compatibility)
+        this.controller.configureForControllerMode(message.controllerMode !== false);
+
         // Request fullscreen
         this.requestFullscreen();
 

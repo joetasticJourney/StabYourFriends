@@ -32,10 +32,16 @@ export class Controller {
         this.gotchaBuffer = null;
         this.stabBuffer = null;
 
+        this.controllerMode = false;
+
         // Stab mode (activated when grappling)
         this.stabMode = true;
         this.stabSpeed = 1;
         this.orientAlpha = 0;
+
+        // Motion/orientation enable flags (controlled by stab mode setting)
+        this.motionEnabled = true;
+        this.orientationEnabled = true;
 
         // Button cooldowns
         this.buttonCooldown = 200; // ms
@@ -48,7 +54,7 @@ export class Controller {
         this.touchpadIndicator = document.getElementById('touchpad-indicator');
         this.action1Btn = document.getElementById('action1-btn');
         this.action2Btn = document.getElementById('action2-btn');
-        this.stabBtn = document.getElementById('stab-btn');
+        this.stabBtn = document.getElementById('stab-btn-new');
 
         this.setupTouchpad();
         this.setupButtons();
@@ -225,11 +231,8 @@ export class Controller {
         if (!this.stabBtn) return;
 
         const onStab = () => {
-            const now = Date.now();
-            if (now - this.lastStabTime < this.buttonCooldown) return;
-            this.lastStabTime = now;
             this.stabBtn.classList.add('pressed');
-            this.triggerShake();
+            this.stabPressed();
             setTimeout(() => {
                 this.stabBtn.classList.remove('pressed');
             }, 150);
@@ -328,6 +331,7 @@ export class Controller {
         console.log('Adding device orientation listener');
 
         window.addEventListener('deviceorientation', (event) => {
+            if (!this.orientationEnabled) return;
             if (event.alpha !== null) {
                 let alpha = event.alpha;
                 // If phone is upside down (beta outside -90..90), flip 180 degrees
@@ -361,6 +365,8 @@ export class Controller {
     }
 
     handleDeviceMotion(event) {
+        if (!this.motionEnabled) return;
+
         // Try accelerationIncludingGravity first, fall back to acceleration
         const acceleration = event.accelerationIncludingGravity || event.acceleration;
 
@@ -400,6 +406,14 @@ export class Controller {
     // Manual trigger for testing (can be called from console: app.controller.testShake())
     testShake() {
         console.log('Manual shake test');
+        this.triggerShake();
+    }
+
+    stabPressed() {
+        if (!this.stabMode) return;
+        const now = Date.now();
+        if (now - this.lastShakeTime < this.shakeCooldown/ this.stabSpeed) return;
+        this.lastShakeTime = now;
         this.triggerShake();
     }
 
@@ -473,6 +487,20 @@ export class Controller {
         this.resetTouchpad();
         this.action1 = false;
         this.action2 = false;
+    }
+
+    configureForControllerMode(controllerModeOn) {
+        this.controllerMode = controllerModeOn;
+        if (controllerModeOn) {
+            if (this.stabBtn) this.stabBtn.style.display = '';
+            this.motionEnabled = false;
+            this.orientationEnabled = false;
+        } else {
+            if (this.stabBtn) this.stabBtn.style.display = 'none';
+            this.motionEnabled = true;
+            this.orientationEnabled = true;
+        }
+        console.log('Controller mode configured:', controllerModeOn ? 'button' : 'shake');
     }
 
     getInput() {

@@ -2,6 +2,7 @@ namespace StabYourFriends.Game;
 
 public class PlayerRanking
 {
+    public string PlayerId { get; set; } = "";
     public string Name { get; set; } = "";
     public int Score { get; set; }
     public bool IsDead { get; set; }

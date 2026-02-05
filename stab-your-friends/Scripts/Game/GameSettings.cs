@@ -10,6 +10,7 @@ public class GameSettings
     public bool EnableTurboStab { get; set; } = true;
     public int GrappleDamage { get; set; } = 1;
     public bool ColorBlindMode { get; set; }
+    public bool ControllerMode { get; set; } = true;
     public float PlayerMoveSpeed { get; set; } = 100f;
     public float PlayerBonusSpeed { get; set; } = 100f;
     public float PowerUpSpawnInterval { get; set; } = 3f;

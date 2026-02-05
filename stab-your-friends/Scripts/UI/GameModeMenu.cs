@@ -20,6 +20,7 @@ public partial class GameModeMenu : Control
     private HSlider _grappleDamageSlider = null!;
     private Label _grappleDamageValueLabel = null!;
     private CheckBox _colorBlindCheck = null!;
+    private CheckBox _stabModeCheck = null!;
     private HSlider _speedSlider = null!;
     private Label _speedValueLabel = null!;
     private HSlider _bonusSpeedSlider = null!;
@@ -173,6 +174,10 @@ public partial class GameModeMenu : Control
         rightCol.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         sliderColumns.AddChild(rightCol);
 
+        // Controller Mode
+        _stabModeCheck = CreateCheckBox("Controller Mode", false);
+        rightCol.AddChild(_stabModeCheck);
+
         // Color Blind Mode
         _colorBlindCheck = CreateCheckBox("Color Blind Mode", false);
         rightCol.AddChild(_colorBlindCheck);
@@ -314,6 +319,7 @@ public partial class GameModeMenu : Control
             EnableTurboStab = _turboStabCheck.ButtonPressed,
             GrappleDamage = (int)_grappleDamageSlider.Value,
             ColorBlindMode = _colorBlindCheck.ButtonPressed,
+            ControllerMode = _stabModeCheck.ButtonPressed,
             PlayerMoveSpeed = (float)_speedSlider.Value,
             PlayerBonusSpeed = (float)_bonusSpeedSlider.Value,
             PowerUpSpawnInterval = (float)_powerUpSpawnSlider.Value,

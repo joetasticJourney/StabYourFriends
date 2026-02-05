@@ -343,9 +343,33 @@ html, body {
     letter-spacing: 2px;
 }
 
-/* Stab Button Zone */
-.stab-zone {
-    display: none;
+/* Stab Button (centered above action buttons) */
+.stab-btn-centered {
+    width: min(35vw, 35vh);
+    height: min(35vw, 35vh);
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(145deg, #e94560, #c73e54);
+    box-shadow: 0 6px 25px rgba(233, 69, 96, 0.5);
+    color: white;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    flex-shrink: 0;
+    align-self: center;
+    margin-bottom: 10px;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.stab-btn-centered span {
+    transform: rotate(90deg);
+    display: block;
+    text-align: center;
+}
+
+.stab-btn-centered.pressed {
+    transform: scale(0.9);
+    box-shadow: 0 2px 15px rgba(233, 69, 96, 0.8);
 }
 
 /* Action Buttons Zone */
@@ -387,15 +411,6 @@ html, body {
 .action-btn.action2 {
     background: linear-gradient(145deg, #2196f3, #1976d2);
     box-shadow: 0 6px 25px rgba(33, 150, 243, 0.5);
-}
-
-.action-btn.stab {
-    background: linear-gradient(145deg, #e94560, #c73e54);
-    box-shadow: 0 6px 25px rgba(233, 69, 96, 0.5);
-}
-
-.action-btn.stab.pressed {
-    box-shadow: 0 2px 15px rgba(233, 69, 96, 0.8);
 }
 
 .action-btn.pressed {
