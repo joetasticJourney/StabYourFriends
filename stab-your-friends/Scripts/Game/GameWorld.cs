@@ -69,6 +69,14 @@ public partial class GameWorld : Node2D
 	private CanvasLayer _uiLayer = null!;
 	private bool _gameEnded;
 
+	// Pause state
+	private bool _paused;
+	private Control _pauseOverlay = null!;
+
+	// HUD labels in the top bar
+	private Label _playersLeftLabel = null!;
+	private int _startingPlayerCount;
+
 	// Game settings from lobby menu
 	private GameSettings _settings = null!;
 
@@ -101,7 +109,23 @@ public partial class GameWorld : Node2D
 		_leaderboard.SetPlayerCharacters(_playerCharacters);
 		AddChild(_leaderboard);
 
-		// Initial size update
+		// Set up UI layer and HUD labels before UpdateWorldSize so they get positioned
+		_uiLayer = GetNode<CanvasLayer>("UI");
+
+		_gameTimer = new GameTimer();
+		_uiLayer.AddChild(_gameTimer);
+		_gameTimer.Initialize(GameDurationSeconds);
+
+		_playersLeftLabel = new Label();
+		_playersLeftLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_playersLeftLabel.VerticalAlignment = VerticalAlignment.Center;
+		_uiLayer.AddChild(_playersLeftLabel);
+
+		// Create pause overlay (hidden by default)
+		_pauseOverlay = CreatePauseMenu();
+		_uiLayer.AddChild(_pauseOverlay);
+
+		// Initial size update (now that all UI elements exist)
 		UpdateWorldSize();
 
 		// Connect to viewport size changed signal
@@ -112,6 +136,9 @@ public partial class GameWorld : Node2D
 
 		SpawnAllPlayers();
 		SpawnNpcs();
+
+		_startingPlayerCount = _playerCharacters.Count;
+		UpdatePlayersLeftLabel();
 
 		// Create spawn point markers
 		_spawnPointMarkers = new SpawnPointMarkers();
@@ -134,23 +161,49 @@ public partial class GameWorld : Node2D
 		AddChild(_vipTimer);
 		StartVipTimer();
 
-		// Set up game timer on the UI layer
-		_uiLayer = GetNode<CanvasLayer>("UI");
-		_gameTimer = new GameTimer();
-		_uiLayer.AddChild(_gameTimer);
-		_gameTimer.Initialize(GameDurationSeconds);
-
 		// Subscribe to player events for mid-game joins/leaves
 		GameManager.Instance.PlayerJoined += OnPlayerJoined;
 		GameManager.Instance.PlayerLeft += OnPlayerLeft;
 		GameManager.Instance.PlayerShake += OnPlayerShake;
 		GameManager.Instance.PlayerDisconnected += OnPlayerDisconnected;
 		GameManager.Instance.PlayerReconnected += OnPlayerReconnected;
+
+	}
+
+	public override void _UnhandledInput(InputEvent @event)
+	{
+		if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo && keyEvent.Keycode == Key.Space)
+		{
+			TogglePause();
+		}
+	}
+
+	private void TogglePause()
+	{
+		_paused = !_paused;
+		_pauseOverlay.Visible = _paused;
+
+		// Freeze/unfreeze all characters
+		foreach (var character in _playerCharacters.Values)
+		{
+			if (IsInstanceValid(character))
+				character.SetPhysicsProcess(!_paused);
+		}
+		foreach (var character in _npcCharacters.Values)
+		{
+			if (IsInstanceValid(character))
+				character.SetPhysicsProcess(!_paused);
+		}
+
+		// Stop/start timers
+		_powerUpTimer.Paused = _paused;
+		_vipTimer.Paused = _paused;
+		_gameTimer.SetProcess(!_paused);
 	}
 
 	public override void _Process(double delta)
 	{
-		if (_gameEnded) return;
+		if (_gameEnded || _paused) return;
 
 		// Check timer expiry
 		if (_gameTimer.IsExpired)
@@ -174,6 +227,38 @@ public partial class GameWorld : Node2D
 				EndGame(true);
 				return;
 			}
+		}
+
+		UpdatePlayersLeftLabel();
+	}
+
+	private void UpdatePlayersLeftLabel()
+	{
+		int alive = 0;
+		foreach (var character in _playerCharacters.Values)
+		{
+			if (!character.IsDead && character.Visible)
+				alive++;
+		}
+
+		_playersLeftLabel.Text = $"Players Left: {alive}";
+
+		// Color: white → gold as alive goes from starting count → 3, then red at 2 or fewer
+		if (alive <= 2)
+		{
+			_playersLeftLabel.AddThemeColorOverride("font_color", new Color(1f, 0.2f, 0.2f));
+		}
+		else if (_startingPlayerCount > 3)
+		{
+			float t = 1f - (alive - 3f) / (_startingPlayerCount - 3f);
+			t = Mathf.Clamp(t, 0f, 1f);
+			// Lerp from white (1,1,1) to gold (1, 0.84, 0)
+			Color color = new Color(1f, Mathf.Lerp(1f, 0.84f, t), Mathf.Lerp(1f, 0f, t));
+			_playersLeftLabel.AddThemeColorOverride("font_color", color);
+		}
+		else
+		{
+			_playersLeftLabel.AddThemeColorOverride("font_color", Colors.White);
 		}
 	}
 
@@ -228,10 +313,10 @@ public partial class GameWorld : Node2D
 			_gameAreaSize.Y = availableWidth / AspectRatio;
 		}
 
-		// Center game area vertically, horizontally within the non-leaderboard space
+		// Center game area horizontally, anchor to bottom of screen
 		_gameAreaOffset = new Vector2(
 			(availableWidth - _gameAreaSize.X) / 2f,
-			(viewportSize.Y - _gameAreaSize.Y) / 2f
+			viewportSize.Y - _gameAreaSize.Y
 		);
 
 		// Calculate scale factor based on game area height vs reference
@@ -288,6 +373,25 @@ public partial class GameWorld : Node2D
 			);
 			_leaderboard.Size = new Vector2(_leaderboardWidth, viewportSize.Y);
 			_leaderboard.SetScaleFactor(_scaleFactor);
+		}
+
+		// Position HUD labels in the top black bar (screen-space via CanvasLayer)
+		float topBarHeight = _gameAreaOffset.Y;
+		if (topBarHeight > 0 && _gameTimer != null && _playersLeftLabel != null)
+		{
+			int fontSize = Mathf.Max(12, Mathf.RoundToInt(topBarHeight * 0.5f));
+
+			_gameTimer.AddThemeFontSizeOverride("font_size", fontSize);
+			_gameTimer.OffsetLeft = _gameAreaOffset.X + 10f;
+			_gameTimer.OffsetTop = 0f;
+			_gameTimer.OffsetRight = _gameAreaOffset.X + 200f;
+			_gameTimer.OffsetBottom = topBarHeight;
+
+			_playersLeftLabel.AddThemeFontSizeOverride("font_size", fontSize);
+			_playersLeftLabel.OffsetLeft = 0f;
+			_playersLeftLabel.OffsetTop = 0f;
+			_playersLeftLabel.OffsetRight = viewportSize.X;
+			_playersLeftLabel.OffsetBottom = topBarHeight;
 		}
 	}
 
@@ -829,6 +933,55 @@ public partial class GameWorld : Node2D
 	{
 		GameManager.Instance.RestartGame();
 		GetTree().ChangeSceneToFile("res://Scenes/Game/SYFScene.tscn");
+	}
+
+	private Control CreatePauseMenu()
+	{
+		// Semi-transparent background covering the whole screen
+		var overlay = new ColorRect();
+		overlay.Color = new Color(0f, 0f, 0f, 0.5f);
+		overlay.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		overlay.Visible = false;
+		overlay.ZIndex = 200;
+
+		// Center container for the menu
+		var vbox = new VBoxContainer();
+		vbox.SetAnchorsPreset(Control.LayoutPreset.Center);
+		vbox.GrowHorizontal = Control.GrowDirection.Both;
+		vbox.GrowVertical = Control.GrowDirection.Both;
+		vbox.AddThemeConstantOverride("separation", 20);
+
+		// "PAUSED" title
+		var title = new Label();
+		title.Text = "PAUSED";
+		title.HorizontalAlignment = HorizontalAlignment.Center;
+		title.AddThemeFontSizeOverride("font_size", 80);
+		title.AddThemeColorOverride("font_color", new Color(1f, 1f, 1f, 0.8f));
+		vbox.AddChild(title);
+
+		// Resume button
+		var resumeBtn = new Button();
+		resumeBtn.Text = "Resume";
+		resumeBtn.CustomMinimumSize = new Vector2(250, 50);
+		resumeBtn.Pressed += () => TogglePause();
+		vbox.AddChild(resumeBtn);
+
+		// Restart button
+		var restartBtn = new Button();
+		restartBtn.Text = "Restart Game";
+		restartBtn.CustomMinimumSize = new Vector2(250, 50);
+		restartBtn.Pressed += OnRestartGame;
+		vbox.AddChild(restartBtn);
+
+		// Return to menu button
+		var menuBtn = new Button();
+		menuBtn.Text = "Return to Menu";
+		menuBtn.CustomMinimumSize = new Vector2(250, 50);
+		menuBtn.Pressed += OnReturnToLobby;
+		vbox.AddChild(menuBtn);
+
+		overlay.AddChild(vbox);
+		return overlay;
 	}
 
 	public override void _ExitTree()

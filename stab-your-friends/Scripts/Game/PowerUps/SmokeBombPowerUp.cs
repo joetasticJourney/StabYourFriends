@@ -13,6 +13,6 @@ public partial class SmokeBombPowerUp : PowerUp
 	protected override void Pickup(StabCharacter character)
 	{
 		base.Pickup(character);
-		character.AddSmokeBombs(2);
+		character.AddSmokeBombs(1);
 	}
 }

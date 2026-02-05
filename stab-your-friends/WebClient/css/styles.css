@@ -424,3 +424,98 @@ html, body {
 .action-btn.action2.pressed {
     box-shadow: 0 2px 15px rgba(33, 150, 243, 0.8);
 }
+
+/* Player HUD — entire block rotated 90° CW so it reads naturally
+   when the phone is held landscape.  Anchored at the right edge,
+   vertically at 55%.  Two rows: HP+VP on top, power-ups below. */
+.player-hud {
+    position: absolute;
+    top: 75%;
+    right: 0;
+    transform-origin: top right;
+    transform: rotate(90deg);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 20px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 0 0 8px 8px;
+    pointer-events: none;
+    z-index: 5;
+    white-space: nowrap;
+}
+
+.player-hud.dead {
+    opacity: 0.4;
+}
+
+.hud-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.hud-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hud-label {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.7);
+    text-transform: uppercase;
+}
+
+.hud-value {
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: #fff;
+}
+
+/* Health bar */
+.hud-health-bar {
+    width: 80px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.hud-health-fill {
+    height: 100%;
+    width: 100%;
+    background: #4caf50;
+    border-radius: 4px;
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.hud-health-fill.medium {
+    background: #ffc107;
+}
+
+.hud-health-fill.low {
+    background: #f44336;
+}
+
+/* Power-up colors matching in-game pickup colors */
+.hud-kf .hud-label,
+.hud-kf .hud-value {
+    color: #FF6633;
+}
+
+.hud-rg .hud-label,
+.hud-rg .hud-value {
+    color: #9933E6;
+}
+
+.hud-ts .hud-label,
+.hud-ts .hud-value {
+    color: #33CCE6;
+}
+
+.hud-sb .hud-label,
+.hud-sb .hud-value {
+    color: #808080;
+}

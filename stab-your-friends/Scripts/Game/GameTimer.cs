@@ -16,13 +16,8 @@ public partial class GameTimer : Label
         _remainingSeconds = totalSeconds;
         _running = true;
 
-        // Position below GameModeLabel
-        OffsetLeft = 10;
-        OffsetTop = 40;
-        OffsetRight = 200;
-        OffsetBottom = 70;
+        VerticalAlignment = VerticalAlignment.Center;
         AddThemeColorOverride("font_color", NormalColor);
-        AddThemeFontSizeOverride("font_size", 24);
 
         UpdateDisplay();
     }

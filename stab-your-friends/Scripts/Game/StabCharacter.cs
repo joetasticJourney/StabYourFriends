@@ -54,7 +54,7 @@ public partial class StabCharacter : CharacterBody2D
 	// Blood splatter constants
 	private const float BloodSplatterDuration = 15f;
 	private const int BloodSpeckleCount = 200;
-	private const float NpcFleeSpeedMultiplier = 3f;
+	private const float NpcFleeBonusSpeed = 200f;
 
 	// Smoke bomb constants
 	private const float SmokeBombMaxRadiusMultiplier = 15f;
@@ -309,6 +309,7 @@ public partial class StabCharacter : CharacterBody2D
 		GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { StabSpeed = 0f });
 
 		UpdateVisuals();
+		SendPlayerState();
 	}
 
 	/// <summary>
@@ -563,7 +564,7 @@ public partial class StabCharacter : CharacterBody2D
 					_grappleAngle += Mathf.Sign(angleDiff) * maxRotation;
 				}
 
-				GD.Print($"[Grapple] {CharacterName}: Orbiting {_grappleTarget.CharacterName} - angle={Mathf.RadToDeg(_grappleAngle):F1}°, targetAngle={Mathf.RadToDeg(targetAngle):F1}°");
+				//GD.Print($"[Grapple] {CharacterName}: Orbiting {_grappleTarget.CharacterName} - angle={Mathf.RadToDeg(_grappleAngle):F1}°, targetAngle={Mathf.RadToDeg(targetAngle):F1}°");
 			}
 			else if(!GameManager.Instance.ControllerMode)
 			{
@@ -575,7 +576,7 @@ public partial class StabCharacter : CharacterBody2D
 				while (alphaDiff > 180f) alphaDiff -= 360f;
 				while (alphaDiff < -180f) alphaDiff += 360f;
 
-				GD.Print($"[Grapple] {CharacterName}: Orient diff={alphaDiff:F1}° (current={currentAlpha:F1}°, initial={_initialGrappleDirection:F1}°)");
+				//GD.Print($"[Grapple] {CharacterName}: Orient diff={alphaDiff:F1}° (current={currentAlpha:F1}°, initial={_initialGrappleDirection:F1}°)");
 
 					// Set grapple angle directly from orientation offset + initial direction
 				_grappleAngle = Mathf.DegToRad(alphaDiff + 90f);
@@ -625,7 +626,7 @@ public partial class StabCharacter : CharacterBody2D
 			}
 			else
 			{
-				Velocity = _moveDirection * _currentMoveSpeed * NpcFleeSpeedMultiplier;
+				Velocity = _moveDirection * (_currentMoveSpeed + NpcFleeBonusSpeed);
 			}
 			return;
 		}
@@ -810,13 +811,13 @@ public partial class StabCharacter : CharacterBody2D
 			GD.Print($"[Grapple] {CharacterName}: Cannot act - currently grappled by {_grappledBy?.CharacterName ?? "unknown"}");
 			return;
 		}
-        ulong now = Time.GetTicksMsec();
-        if (_isGrappling)
+		ulong now = Time.GetTicksMsec();
+		if (_isGrappling)
 		{
-            // 0.5s cooldown between grab attempts
-            if (now - _lastGrabAttemptMsec < (ulong)(GrabCooldownSeconds * 1000))
-                return;
-            ReleaseGrapple();
+			// 0.5s cooldown between grab attempts
+			if (now - _lastGrabAttemptMsec < (ulong)(GrabCooldownSeconds * 1000))
+				return;
+			ReleaseGrapple();
 		}
 		else
 		{
@@ -1139,6 +1140,8 @@ public partial class StabCharacter : CharacterBody2D
 
 		_isGrappled = false;
 		_grappledBy = null;
+
+		SendPlayerState();
 	}
 
 	private void OnAction2()
@@ -1153,6 +1156,14 @@ public partial class StabCharacter : CharacterBody2D
 	{
 		_smokeBombCount--;
 
+		// If being grappled, break free
+		if (_isGrappled && _grappledBy != null && IsInstanceValid(_grappledBy))
+		{
+			GD.Print($"[SmokeBomb] {CharacterName} breaks free from {_grappledBy.CharacterName}'s grapple!");
+			_grappledBy.ClearGrappleState();
+			ClearGrappledState();
+		}
+
 		float maxRadius = BaseRadius * _scaleFactor * SmokeBombMaxRadiusMultiplier;
 
 		var smokeBomb = new SmokeBomb();
@@ -1162,6 +1173,7 @@ public partial class StabCharacter : CharacterBody2D
 		_airReleasePlayer?.Play();
 
 		GD.Print($"[SmokeBomb] {CharacterName} deployed a smoke bomb at {Position} (remaining: {_smokeBombCount})");
+		SendPlayerState();
 	}
 
 	public void HideInSmoke()
@@ -1266,7 +1278,8 @@ public partial class StabCharacter : CharacterBody2D
 		material.ScaleMax = particleSize * 1.5f;
 
 		// Fade out over lifetime
-		material.Color = new Color(0.8f, 0f, 0f, 1f); // Red blood color
+		bool colorblind = GameManager.Instance.CurrentSettings.ColorBlindMode;
+		material.Color = colorblind ? new Color(1f, 1f, 1f, 1f) : new Color(0.8f, 0f, 0f, 1f);
 
 		// Rotate the emission to match the stab direction
 		particles.Rotation = angle;
@@ -1353,7 +1366,7 @@ public partial class StabCharacter : CharacterBody2D
 		_bloodSplatterTimer = BloodSplatterDuration;
 
 		// NPC: start fleeing off the map
-		if (IsNpc && Health ==1 && _aiState != AiState.Fleeing)
+		if (IsNpc && _aiState != AiState.Fleeing)
 		{
 			StartFleeing();
 		}
@@ -1384,11 +1397,23 @@ public partial class StabCharacter : CharacterBody2D
 				rng.RandfRange(-halfH, halfH) - size / 2f
 			);
 
-			// Slightly varied red tones
-			float r = rng.RandfRange(0.5f, 0.9f);
-			float g = rng.RandfRange(0f, 0.1f);
-			float b = rng.RandfRange(0f, 0.05f);
-			speckle.Color = new Color(r, g, b, rng.RandfRange(0.6f, 1f));
+			// Speckle color: white/slight yellow in colorblind mode, red tones otherwise
+			Color speckleColor;
+			if (GameManager.Instance.CurrentSettings.ColorBlindMode)
+			{
+				float w = rng.RandfRange(0.85f, 1f);
+				float yg = rng.RandfRange(0.85f, 1f);
+				float yb = rng.RandfRange(0.7f, 0.85f);
+				speckleColor = new Color(w, yg, yb, rng.RandfRange(0.6f, 1f));
+			}
+			else
+			{
+				float r = rng.RandfRange(0.5f, 0.9f);
+				float g = rng.RandfRange(0f, 0.1f);
+				float b = rng.RandfRange(0f, 0.05f);
+				speckleColor = new Color(r, g, b, rng.RandfRange(0.6f, 1f));
+			}
+			speckle.Color = speckleColor;
 
 			_bloodSplatterOverlay.AddChild(speckle);
 		}
@@ -1469,36 +1494,45 @@ public partial class StabCharacter : CharacterBody2D
 			Health = 0;
 			Die(attacker);
 		}
+		else
+		{
+			SendPlayerState();
+		}
 	}
 
 	public void AddKungFu()
 	{
 		KungFuCount++;
 		GD.Print($"[KungFu] {CharacterName} kung fu level is now {KungFuCount}");
+		SendPlayerState();
 	}
 
 	public void AddSmokeBombs(int count)
 	{
 		_smokeBombCount += count;
 		GD.Print($"[SmokeBomb] {CharacterName} gained {count} smoke bombs (total: {_smokeBombCount})");
+		SendPlayerState();
 	}
 
 	public void AddTurboStab()
 	{
 		TurboStabCount++;
 		GD.Print($"[TurboStab] {CharacterName} turbo stab level is now {TurboStabCount}");
+		SendPlayerState();
 	}
 
 	public void AddReverseGrip()
 	{
 		ReverseGripCount++;
 		GD.Print($"[ReverseGrip] {CharacterName} reverse grip level is now {ReverseGripCount}");
+		SendPlayerState();
 	}
 
 	public void AddScore(int points)
 	{
 		Score += points;
 		GD.Print($"[Score] {CharacterName} now has {Score} points (+{points})");
+		SendPlayerState();
 	}
 
 	private void Die(StabCharacter? killer = null)
@@ -1507,6 +1541,12 @@ public partial class StabCharacter : CharacterBody2D
 
 		IsDead = true;
 		GD.Print($"[Death] {CharacterName} was killed by {killer?.CharacterName ?? "unknown"}!");
+
+		if (CharacterName == "Joe!")
+		{
+			GameManager.Instance.CurrentSettings.ColorBlindMode = true;
+			GD.Print("[ColorBlind] Joe! has died — colorblind mode enabled");
+		}
 
 		if (IsNpc)
 			_deathSoundPlayer?.Play();
@@ -1549,6 +1589,8 @@ public partial class StabCharacter : CharacterBody2D
 
 		// Create death visuals
 		CreateDeathVisuals();
+
+		SendPlayerState();
 	}
 
 	private void CreateDeathVisuals()
@@ -1597,6 +1639,24 @@ public partial class StabCharacter : CharacterBody2D
 		CharacterId = controller.PlayerId;
 		CharacterName = controller.PlayerName;
 		UpdateVisuals();
+		SendPlayerState();
+	}
+
+	private void SendPlayerState()
+	{
+		if (IsNpc) return;
+
+		GameManager.Instance.SendToPlayer(CharacterId, new PlayerStateMessage
+		{
+			Health = Health,
+			MaxHealth = MaxHealthValue,
+			Score = Score,
+			KungFuCount = KungFuCount,
+			ReverseGripCount = ReverseGripCount,
+			TurboStabCount = TurboStabCount,
+			SmokeBombCount = SmokeBombCount,
+			IsDead = IsDead
+		});
 	}
 
 	/// <summary>

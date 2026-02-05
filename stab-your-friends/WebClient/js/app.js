@@ -164,6 +164,9 @@ class App {
             case 'grappleState':
                 this.controller.setStabMode(message.stabSpeed);
                 break;
+            case 'playerState':
+                this.controller.updatePlayerState(message);
+                break;
             case 'gameEnd':
                 this.handleGameEnd();
                 break;

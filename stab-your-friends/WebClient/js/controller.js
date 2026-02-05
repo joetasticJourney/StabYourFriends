@@ -61,6 +61,20 @@ export class Controller {
         this.setupStabButton();
         this.setupShakeDetection();
         this.setupOrientationTracking();
+
+        // HUD element references
+        this.hudEl = document.getElementById('player-hud');
+        this.hudHealthFill = document.getElementById('hud-health-fill');
+        this.hudHealthText = document.getElementById('hud-health-text');
+        this.hudScoreValue = document.getElementById('hud-score-value');
+        this.hudKf = document.getElementById('hud-kf');
+        this.hudKfCount = document.getElementById('hud-kf-count');
+        this.hudRg = document.getElementById('hud-rg');
+        this.hudRgCount = document.getElementById('hud-rg-count');
+        this.hudTs = document.getElementById('hud-ts');
+        this.hudTsCount = document.getElementById('hud-ts-count');
+        this.hudSb = document.getElementById('hud-sb');
+        this.hudSbCount = document.getElementById('hud-sb-count');
     }
 
     setupTouchpad() {
@@ -487,6 +501,12 @@ export class Controller {
         this.resetTouchpad();
         this.action1 = false;
         this.action2 = false;
+
+        // Hide HUD overlay
+        if (this.hudEl) {
+            this.hudEl.style.display = 'none';
+            this.hudEl.classList.remove('dead');
+        }
     }
 
     configureForControllerMode(controllerModeOn) {
@@ -501,6 +521,46 @@ export class Controller {
             this.orientationEnabled = true;
         }
         console.log('Controller mode configured:', controllerModeOn ? 'button' : 'shake');
+    }
+
+    updatePlayerState(state) {
+        if (!this.hudEl) return;
+
+        // Show HUD
+        this.hudEl.style.display = '';
+
+        // Health bar
+        const pct = state.maxHealth > 0 ? (state.health / state.maxHealth) * 100 : 0;
+        this.hudHealthFill.style.width = pct + '%';
+        this.hudHealthFill.classList.remove('medium', 'low');
+        if (pct <= 30) {
+            this.hudHealthFill.classList.add('low');
+        } else if (pct <= 60) {
+            this.hudHealthFill.classList.add('medium');
+        }
+        this.hudHealthText.textContent = state.health + '/' + state.maxHealth;
+
+        // Score
+        this.hudScoreValue.textContent = state.score;
+
+        // Power-ups
+        this.updateHudItem(this.hudKf, this.hudKfCount, state.kungFuCount);
+        this.updateHudItem(this.hudRg, this.hudRgCount, state.reverseGripCount);
+        this.updateHudItem(this.hudTs, this.hudTsCount, state.turboStabCount);
+        this.updateHudItem(this.hudSb, this.hudSbCount, state.smokeBombCount);
+
+        // Dead state
+        this.hudEl.classList.toggle('dead', !!state.isDead);
+    }
+
+    updateHudItem(wrapper, countEl, count) {
+        if (!wrapper) return;
+        if (count > 0) {
+            wrapper.style.display = '';
+            countEl.textContent = count;
+        } else {
+            wrapper.style.display = 'none';
+        }
     }
 
     getInput() {

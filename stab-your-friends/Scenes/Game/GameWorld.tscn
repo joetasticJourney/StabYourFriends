@@ -46,10 +46,3 @@ shape = SubResource("RectangleShape2D_left")
 
 [node name="UI" type="CanvasLayer" parent="."]
 
-[node name="GameModeLabel" type="Label" parent="UI"]
-offset_left = 10.0
-offset_top = 10.0
-offset_right = 300.0
-offset_bottom = 40.0
-theme_override_font_sizes/font_size = 20
-text = "Game Mode: Free For All"

@@ -66,6 +66,43 @@
             <!-- Fullscreen button -->
             <button id="fullscreen-btn" class="fullscreen-btn" title="Fullscreen">⛶</button>
 
+            <!-- Player HUD overlay -->
+            <div id="player-hud" class="player-hud" style="display:none;">
+                <!-- Row 1: HP + VP (right column = top row in landscape) -->
+                <div class="hud-row">
+                    <div class="hud-item hud-health">
+                        <span class="hud-label">HP</span>
+                        <div class="hud-health-bar">
+                            <div id="hud-health-fill" class="hud-health-fill"></div>
+                        </div>
+                        <span id="hud-health-text" class="hud-value">10/10</span>
+                    </div>
+                    <div class="hud-item hud-score">
+                        <span class="hud-label">VP</span>
+                        <span id="hud-score-value" class="hud-value">0</span>
+                    </div>
+                </div>
+                <!-- Row 2: Power-ups (left column = bottom row in landscape) -->
+                <div class="hud-row hud-row-powerups">
+                    <div id="hud-kf" class="hud-item hud-powerup hud-kf" style="display:none;">
+                        <span class="hud-label">KF</span>
+                        <span id="hud-kf-count" class="hud-value">0</span>
+                    </div>
+                    <div id="hud-rg" class="hud-item hud-powerup hud-rg" style="display:none;">
+                        <span class="hud-label">RG</span>
+                        <span id="hud-rg-count" class="hud-value">0</span>
+                    </div>
+                    <div id="hud-ts" class="hud-item hud-powerup hud-ts" style="display:none;">
+                        <span class="hud-label">TS</span>
+                        <span id="hud-ts-count" class="hud-value">0</span>
+                    </div>
+                    <div id="hud-sb" class="hud-item hud-powerup hud-sb" style="display:none;">
+                        <span class="hud-label">SB</span>
+                        <span id="hud-sb-count" class="hud-value">0</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Touchpad for movement -->
             <div class="touchpad-zone">
                 <div id="touchpad" class="touchpad">
