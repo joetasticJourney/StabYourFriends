@@ -27,13 +27,9 @@ public partial class GameWorld : Node2D
 	private const float BaseWallThickness = 20f;
 	private const float LeaderboardRefWidth = 125f;
 
-	// Power-up spawn settings
-	private const float MinSpawnInterval = 2f;
-	private const float MaxSpawnInterval = 4f;
-
-	// VIP spawn settings
-	private const float MinVipSpawnInterval = 5f;
-	private const float MaxVipSpawnInterval = 20f;
+	// Power-up and VIP spawn intervals (set from GameSettings)
+	private float _powerUpSpawnInterval = 3f;
+	private float _vipSpawnInterval = 12f;
 
 	// Separate character lists for players and NPCs
 	private readonly Dictionary<string, StabCharacter> _playerCharacters = new();
@@ -73,8 +69,17 @@ public partial class GameWorld : Node2D
 	private CanvasLayer _uiLayer = null!;
 	private bool _gameEnded;
 
+	// Game settings from lobby menu
+	private GameSettings _settings = null!;
+
 	public override void _Ready()
 	{
+		// Apply game settings from lobby
+		_settings = GameManager.Instance.CurrentSettings;
+		GameDurationSeconds = _settings.GameDurationSeconds;
+		_powerUpSpawnInterval = _settings.PowerUpSpawnInterval;
+		_vipSpawnInterval = _settings.VipSpawnInterval;
+
 		// Load derived character scenes
 		_npcCharacterScene = GD.Load<PackedScene>("res://Scenes/Game/NpcCharacter.tscn");
 		_vipCharacterScene = GD.Load<PackedScene>("res://Scenes/Game/VipCharacter.tscn");
@@ -351,6 +356,11 @@ public partial class GameWorld : Node2D
 		// Override color to match all characters
 		character.SetColor(CharacterColor);
 
+		// Apply game settings before SetScale so _currentMoveSpeed is computed correctly
+		character.BaseMoveSpeed = _settings.PlayerMoveSpeed;
+		character.BaseBonusSpeed = _settings.PlayerBonusSpeed;
+		character.GrappleDamage = _settings.GrappleDamage;
+
 		// Set initial scale and game bounds
 		character.SetScale(_scaleFactor);
 		character.SetGameBounds(_gameAreaSize);
@@ -376,6 +386,11 @@ public partial class GameWorld : Node2D
 		var character = _npcCharacterScene.Instantiate<NpcCharacter>();
 		character.InitializeAsNpc(npcId, name, color);
 
+		// Apply game settings before SetScale so _currentMoveSpeed is computed correctly
+		character.BaseMoveSpeed = _settings.PlayerMoveSpeed;
+		character.BaseBonusSpeed = _settings.PlayerBonusSpeed;
+		character.GrappleDamage = _settings.GrappleDamage;
+
 		// Set initial scale and game bounds
 		character.SetScale(_scaleFactor);
 		character.SetGameBounds(_gameAreaSize);
@@ -399,10 +414,13 @@ public partial class GameWorld : Node2D
 
 	private Vector2 GetSpawnPosition(int index, int totalEntities)
 	{
-		var center = _gameAreaSize / 2;
-		var radius = _gameAreaSize.Y * 0.3f;
-		var angle = (index * Mathf.Tau) / Mathf.Max(totalEntities, 1);
-		return center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+		var rng = new RandomNumberGenerator();
+		rng.Randomize();
+		var margin = 100f * _scaleFactor;
+		return new Vector2(
+			rng.RandfRange(margin, _gameAreaSize.X - margin),
+			rng.RandfRange(margin, _gameAreaSize.Y - margin)
+		);
 	}
 
 	private void OnPlayerJoined(PlayerController controller)
@@ -493,6 +511,9 @@ public partial class GameWorld : Node2D
 		var result = new List<StabCharacter>();
 		float radiusSquared = radius * radius;
 
+			var circle = new GrabDebugCircle(radius);
+			circle.Position = position;
+		AddChild(circle);
 		foreach (var character in _playerCharacters.Values)
 		{
 			if (!IsInstanceValid(character)) continue;
@@ -581,7 +602,7 @@ public partial class GameWorld : Node2D
 
 	private void StartPowerUpTimer()
 	{
-		float interval = _powerUpRng.RandfRange(MinSpawnInterval, MaxSpawnInterval);
+		float interval = _powerUpRng.RandfRange(_powerUpSpawnInterval * 0.5f, _powerUpSpawnInterval * 1.5f);
 		_powerUpTimer.WaitTime = interval;
 		_powerUpTimer.Start();
 	}
@@ -623,8 +644,17 @@ public partial class GameWorld : Node2D
 		// Pick a random available spot
 		int spotIndex = available[_powerUpRng.RandiRange(0, available.Count - 1)];
 
-		// Pick a random power-up type
-		int typeIndex = _powerUpRng.RandiRange(0, 4);
+		// Build list of enabled power-up types
+		var enabledTypes = new List<int>();
+		if (_settings.EnableVictoryPoints) enabledTypes.Add(0);
+		if (_settings.EnableKungFu) enabledTypes.Add(1);
+		if (_settings.EnableReverseGrip) enabledTypes.Add(2);
+		if (_settings.EnableSmokeBombs) enabledTypes.Add(3);
+		if (_settings.EnableTurboStab) enabledTypes.Add(4);
+
+		if (enabledTypes.Count == 0) return;
+
+		int typeIndex = enabledTypes[_powerUpRng.RandiRange(0, enabledTypes.Count - 1)];
 		PowerUp powerUp = typeIndex switch
 		{
 			0 => new VictoryPointPowerUp(),
@@ -644,7 +674,7 @@ public partial class GameWorld : Node2D
 
 	private void StartVipTimer()
 	{
-		float interval = _vipRng.RandfRange(MinVipSpawnInterval, MaxVipSpawnInterval);
+		float interval = _vipRng.RandfRange(_vipSpawnInterval * 0.5f, _vipSpawnInterval * 1.5f);
 		_vipTimer.WaitTime = interval;
 		_vipTimer.Start();
 	}
@@ -664,6 +694,11 @@ public partial class GameWorld : Node2D
 
 		var character = _vipCharacterScene.Instantiate<VipCharacter>();
 		character.InitializeAsNpc(vipId, vipName, Colors.White);
+
+		// Apply game settings before SetScale so _currentMoveSpeed is computed correctly
+		character.BaseMoveSpeed = _settings.PlayerMoveSpeed;
+		character.BaseBonusSpeed = _settings.PlayerBonusSpeed;
+		character.GrappleDamage = _settings.GrappleDamage;
 
 		character.SetScale(_scaleFactor);
 		character.SetGameBounds(_gameAreaSize);

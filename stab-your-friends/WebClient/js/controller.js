@@ -29,6 +29,8 @@ export class Controller {
 
         // Audio context for shake sound
         this.audioContext = null;
+        this.gotchaAudio = new Audio('Sounds/gotcha.mp3');
+        this.stabAudio = new Audio('Sounds/Stab.mp3');
 
         // Stab mode (activated when grappling)
         this.stabMode = true;
@@ -333,10 +335,16 @@ export class Controller {
     }
 
     setStabMode(newStabSpeed) {
+        const wasStabMode = this.stabMode;
         this.stabMode = (newStabSpeed > 0);
         this.stabSpeed = newStabSpeed;
         console.log('Stab mode:', this.stabMode ? 'ON' : 'OFF');
         console.log('Stab speed:', newStabSpeed);
+
+        if (!wasStabMode && this.stabMode) {
+            this.gotchaAudio.currentTime = 0;
+            this.gotchaAudio.play().catch(e => console.log('Audio play failed:', e));
+        }
     }
 
     addMotionListener() {
@@ -404,38 +412,8 @@ export class Controller {
     }
 
     playShakeSound() {
-        // Create audio context on first use (must be after user interaction)
-        if (!this.audioContext) {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-
-        // Resume if suspended (browsers require user interaction)
-        if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
-        }
-
-        const ctx = this.audioContext;
-        const now = ctx.currentTime;
-
-        // Create a short "whoosh" sound for shake
-        const oscillator = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-
-        oscillator.connect(gainNode);
-        gainNode.connect(ctx.destination);
-
-        // Sweep frequency down for a "swoosh" effect
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(600, now);
-        oscillator.frequency.exponentialRampToValueAtTime(200, now + 0.15);
-
-        // Quick attack, fast decay
-        gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(0.3, now + 0.02);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-
-        oscillator.start(now);
-        oscillator.stop(now + 0.15);
+        this.stabAudio.currentTime = 0;
+        this.stabAudio.play().catch(e => console.log('Audio play failed:', e));
     }
 
     startSendingInput() {

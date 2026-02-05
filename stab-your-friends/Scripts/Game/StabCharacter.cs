@@ -13,7 +13,7 @@ public partial class StabCharacter : CharacterBody2D
 	private enum FacingDirection { Down, Up, Left, Right }
 
 	[Export] public float BaseMoveSpeed { get; set; } = 100f;
-
+	[Export] public float BaseBonusSpeed { get; set; } = 100f;
 	// Base sizes at 1080p reference
 	private const float BaseRadius = 25f;
 	private const float BaseFontSize = 14f;
@@ -46,7 +46,7 @@ public partial class StabCharacter : CharacterBody2D
 	private const float BloodPoolExpandDuration = 0.5f;
 
 	// Stab particle constants
-	private const float StabParticleDistance = BaseRadius * 10f;
+	private const float StabParticleDistance = BaseRadius * 15f;
 	private const float StabParticleSpreadAngle = Mathf.Pi / 4f; // 45 degrees
 	private const float StabParticleLifetime = 0.6f;
 	private const int StabParticleCount = 120;
@@ -64,13 +64,14 @@ public partial class StabCharacter : CharacterBody2D
 	public string CharacterName { get; set; } = "";
 	public Color CharacterColor { get; set; } = Colors.White;
 	public bool IsNpc { get; private set; }
-	public int Health { get; protected set; } = MaxHealth;
+	public int Health { get; set; } = MaxHealth;
 	public bool IsDead { get; private set; }
 	public int Score { get; private set; }
 	public int KungFuCount { get; private set; }
 	public int ReverseGripCount { get; private set; }
 	public int TurboStabCount { get; private set; }
 	public int SmokeBombCount => _smokeBombCount;
+	public int GrappleDamage { get; set; } = 1;
 	public int KillPointValue { get; set; } = 1;
 	public const int MaxHealthValue = MaxHealth;
 
@@ -104,6 +105,13 @@ public partial class StabCharacter : CharacterBody2D
 	private int _smokeBombCount;
 	private bool _hiddenInSmoke;
 
+	// Audio
+	private AudioStreamPlayer2D? _swordMissPlayer;
+	private AudioStreamPlayer2D? _swordHitPlayer;
+	private AudioStreamPlayer2D? _deathSoundPlayer;
+	private AudioStreamPlayer2D? _deathScreamPlayer;
+	private AudioStreamPlayer2D? _airReleasePlayer;
+
 	// Reference to game world for character lookup
 	private GameWorld? _gameWorld;
 
@@ -132,6 +140,7 @@ public partial class StabCharacter : CharacterBody2D
 		_animatedSprite = GetNode<AnimatedSprite2D>("AnimatedSprite2D");
 		_animatedSprite.ClipChildren = CanvasItem.ClipChildrenMode.AndDraw;
 		_nameLabel = GetNode<Label>("NameLabel");
+		_nameLabel.Visible = false;
 		_collisionShape = GetNode<CollisionShape2D>("CollisionShape2D");
 		_currentMoveSpeed = BaseMoveSpeed;
 
@@ -139,6 +148,31 @@ public partial class StabCharacter : CharacterBody2D
 
 		// Get reference to GameWorld parent
 		_gameWorld = GetParent<GameWorld>();
+
+		_swordMissPlayer = new AudioStreamPlayer2D();
+		_swordMissPlayer.Stream = GD.Load<AudioStream>("res://Sounds/SwordMiss.mp3");
+		_swordMissPlayer.MaxDistance = 2000;
+		AddChild(_swordMissPlayer);
+
+		_swordHitPlayer = new AudioStreamPlayer2D();
+		_swordHitPlayer.Stream = GD.Load<AudioStream>("res://Sounds/SwordHit.mp3");
+		_swordHitPlayer.MaxDistance = 2000;
+		AddChild(_swordHitPlayer);
+
+		_deathSoundPlayer = new AudioStreamPlayer2D();
+		_deathSoundPlayer.Stream = GD.Load<AudioStream>("res://Sounds/deathsound.mp3");
+		_deathSoundPlayer.MaxDistance = 2000;
+		AddChild(_deathSoundPlayer);
+
+		_deathScreamPlayer = new AudioStreamPlayer2D();
+		_deathScreamPlayer.Stream = GD.Load<AudioStream>("res://Sounds/deathscream.mp3");
+		_deathScreamPlayer.MaxDistance = 2000;
+		AddChild(_deathScreamPlayer);
+
+		_airReleasePlayer = new AudioStreamPlayer2D();
+		_airReleasePlayer.Stream = GD.Load<AudioStream>("res://Sounds/airrelease.mp3");
+		_airReleasePlayer.MaxDistance = 2000;
+		AddChild(_airReleasePlayer);
 
 		BuildSpriteFrames();
 		UpdateVisuals();
@@ -265,7 +299,7 @@ public partial class StabCharacter : CharacterBody2D
 		CharacterId = controller.PlayerId;
 		CharacterName = controller.PlayerName;
 		CharacterColor = controller.PlayerColor;
-		_smokeBombCount = 10;
+		_smokeBombCount = 1;
 
 
 		GameManager.Instance.SendToPlayer(CharacterId, new GrappleStateMessage { StabSpeed = 0f });
@@ -576,7 +610,10 @@ public partial class StabCharacter : CharacterBody2D
 		float playerspeed = _currentMoveSpeed;
 		if (inputMag > 0.6f)
 		{
-			playerspeed += _currentMoveSpeed * (((inputMag > 1 ) ? 1 : inputMag) - 0.6f) / 0.2f;
+			float alpha = (((inputMag > 1) ? 1 : inputMag) - 0.6f) / 0.4f;
+			
+
+			playerspeed += _currentMoveSpeed + Mathf.Lerp(0f, BaseBonusSpeed, alpha); ;
 		}
 		//GD.Print($"[player] inputmag ={inputMag} playerspeed ={playerspeed}");
 		Velocity = moveInput.Normalized() * playerspeed;
@@ -807,6 +844,9 @@ public partial class StabCharacter : CharacterBody2D
 		// Play attack animation based on facing direction
 		PlayAttackAnimation();
 
+		// Show debug circle for grapple range
+		SpawnGrabDebugCircle();
+
 		var target = FindGrappleTarget();
 		if (target != null)
 		{
@@ -816,6 +856,7 @@ public partial class StabCharacter : CharacterBody2D
 		else
 		{
 			GD.Print($"[Grapple] {CharacterName}: No valid target found within range {GrappleRange * _scaleFactor}");
+			_swordMissPlayer?.Play();
 		}
 	}
 
@@ -840,8 +881,37 @@ public partial class StabCharacter : CharacterBody2D
 	private void OnAttackAnimationFinished()
 	{
 		_animatedSprite.AnimationFinished -= OnAttackAnimationFinished;
+
+		if (_isGrappling)
+		{
+			// Hold on the last frame of the attack animation while grappling
+			_animatedSprite.Pause();
+			return;
+		}
+
 		_playingAttackAnim = false;
 		PlayAnimation();
+	}
+
+	private Vector2 GetFacingVector()
+	{
+		return _facing switch
+		{
+			FacingDirection.Up => new Vector2(0, -1),
+			FacingDirection.Down => new Vector2(0, 1),
+			FacingDirection.Left => new Vector2(-1, 0),
+			FacingDirection.Right => new Vector2(1, 0),
+			_ => new Vector2(0, 1)
+		};
+	}
+
+	private void SpawnGrabDebugCircle()
+	{
+		//float scaledRange = GrappleRange * _scaleFactor;
+		//float offset = BaseRadius * _scaleFactor;
+		//var circle = new GrabDebugCircle(scaledRange);
+		//circle.Position = Position + GetFacingVector() * offset;
+		//GetParent().AddChild(circle);
 	}
 
 	private StabCharacter? FindGrappleTarget()
@@ -853,7 +923,9 @@ public partial class StabCharacter : CharacterBody2D
 		}
 
 		float scaledRange = GrappleRange * _scaleFactor;
-		var nearbyCharacters = _gameWorld.GetNearbyCharacters(Position, scaledRange);
+		float offset = BaseRadius * _scaleFactor;
+		Vector2 searchCenter = Position + GetFacingVector() * offset;
+		var nearbyCharacters = _gameWorld.GetNearbyCharacters(searchCenter, scaledRange);
 		GD.Print($"[Grapple] {CharacterName}: Found {nearbyCharacters.Count} characters within range {scaledRange}");
 
 		StabCharacter? closestPlayer = null;
@@ -886,7 +958,7 @@ public partial class StabCharacter : CharacterBody2D
 				continue;
 			}
 
-			float distance = Position.DistanceTo(character.Position);
+			float distance = searchCenter.DistanceTo(character.Position);
 			GD.Print($"[Grapple] {CharacterName}: Checking {character.CharacterName} - distance={distance:F1}, isNpc={character.IsNpc}");
 
 			if (!character.IsNpc)
@@ -946,6 +1018,20 @@ public partial class StabCharacter : CharacterBody2D
 
 	private void StartGrapple(StabCharacter target)
 	{
+		_swordHitPlayer?.Play();
+
+		if (GrappleDamage > 0)
+		{
+			Vector2 stabDirection = (target.Position - Position).Normalized();
+			SpawnStabParticles(target.GlobalPosition, stabDirection);
+			target.TakeDamage(GrappleDamage, this);
+
+			if(target.Health==0)
+			{
+				return;
+			}
+		}
+
 		_isGrappling = true;
 		_grappleTarget = target;
 
@@ -1024,6 +1110,12 @@ public partial class StabCharacter : CharacterBody2D
 		_isGrappling = false;
 		_grappleTarget = null;
 		_isPlayerInStabPosition = false;
+
+		if (_playingAttackAnim)
+		{
+			_playingAttackAnim = false;
+			PlayAnimation();
+		}
 	}
 
 	private void ClearGrappledState()
@@ -1058,6 +1150,7 @@ public partial class StabCharacter : CharacterBody2D
 		smokeBomb.Initialize(Position, maxRadius);
 
 		_gameWorld!.AddChild(smokeBomb);
+		_airReleasePlayer?.Play();
 
 		GD.Print($"[SmokeBomb] {CharacterName} deployed a smoke bomb at {Position} (remaining: {_smokeBombCount})");
 	}
@@ -1251,7 +1344,7 @@ public partial class StabCharacter : CharacterBody2D
 		_bloodSplatterTimer = BloodSplatterDuration;
 
 		// NPC: start fleeing off the map
-		if (IsNpc && _aiState != AiState.Fleeing)
+		if (IsNpc && Health ==1 && _aiState != AiState.Fleeing)
 		{
 			StartFleeing();
 		}
@@ -1405,6 +1498,11 @@ public partial class StabCharacter : CharacterBody2D
 
 		IsDead = true;
 		GD.Print($"[Death] {CharacterName} was killed by {killer?.CharacterName ?? "unknown"}!");
+
+		if (IsNpc)
+			_deathSoundPlayer?.Play();
+		else
+			_deathScreamPlayer?.Play();
 
 		// Award a point and transfer power-ups to the killer
 		if (killer != null && !killer.IsDead)

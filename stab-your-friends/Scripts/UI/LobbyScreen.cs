@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Godot;
 using StabYourFriends.Autoload;
 using StabYourFriends.Controllers;
+using StabYourFriends.Game;
 
 namespace StabYourFriends.UI;
 
@@ -148,6 +149,10 @@ public partial class LobbyScreen : Control
 
     private void OnGameModeSelected(string gameMode)
     {
+        if (_gameModeMenu != null)
+        {
+            GameManager.Instance.CurrentSettings = _gameModeMenu.Settings;
+        }
         HideGameModeMenu();
         GameManager.Instance.StartGame(gameMode);
     }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using StabYourFriends.Controllers;
+using StabYourFriends.Game;
 using StabYourFriends.Networking;
 using StabYourFriends.Networking.Messages;
 
@@ -35,6 +36,7 @@ public partial class GameManager : Node
 	public int ServerPort => _server?.Port ?? 9443;
 	public string CurrentGameMode { get; private set; } = "";
 	public bool IsGameInProgress { get; private set; }
+	public GameSettings CurrentSettings { get; set; } = new();
 
 	public bool CanStartGame => _players.Count >= MinPlayersToStart;
 

@@ -333,21 +333,26 @@ html, body {
     letter-spacing: 2px;
 }
 
+/* Stab Button Zone */
+.stab-zone {
+    display: none;
+}
+
 /* Action Buttons Zone */
 .buttons-zone {
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 20px;
-    padding: 30px 20px;
+    padding: 10px 5px 30px;
 }
 
 .action-btn {
-    width: 100px;
-    height: 100px;
+    width: min(35vw, 35vh);
+    height: min(35vw, 35vh);
     border-radius: 50%;
     border: none;
-    font-size: 2rem;
+    font-size: clamp(0.8rem, 3vw, 1.4rem);
     font-weight: bold;
     color: white;
     cursor: pointer;
@@ -355,10 +360,13 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .action-btn span {
     transform: rotate(90deg);
+    text-align: center;
+    line-height: 1.1;
 }
 
 .action-btn.action1 {
@@ -374,7 +382,6 @@ html, body {
 .action-btn.stab {
     background: linear-gradient(145deg, #e94560, #c73e54);
     box-shadow: 0 6px 25px rgba(233, 69, 96, 0.5);
-    font-size: 1rem;
 }
 
 .action-btn.stab.pressed {
@@ -391,72 +398,4 @@ html, body {
 
 .action-btn.action2.pressed {
     box-shadow: 0 2px 15px rgba(33, 150, 243, 0.8);
-}
-
-/* Small phones */
-@media (max-height: 600px) {
-    .touchpad {
-        max-width: 200px;
-    }
-
-    .touchpad-indicator {
-        width: 45px;
-        height: 45px;
-    }
-
-    .action-btn {
-        width: 80px;
-        height: 80px;
-        font-size: 1.5rem;
-    }
-
-    .buttons-zone {
-        gap: 30px;
-        padding: 20px;
-    }
-}
-
-/* Larger phones */
-@media (min-height: 800px) {
-    .touchpad {
-        max-width: 350px;
-    }
-
-    .touchpad-indicator {
-        width: 70px;
-        height: 70px;
-    }
-
-    .action-btn {
-        width: 110px;
-        height: 110px;
-        font-size: 2.2rem;
-    }
-
-    .buttons-zone {
-        gap: 50px;
-        padding: 40px 20px;
-    }
-}
-
-/* Tablets */
-@media (min-width: 768px) {
-    .touchpad {
-        max-width: 400px;
-    }
-
-    .touchpad-indicator {
-        width: 80px;
-        height: 80px;
-    }
-
-    .action-btn {
-        width: 130px;
-        height: 130px;
-        font-size: 2.5rem;
-    }
-
-    .buttons-zone {
-        gap: 60px;
-    }
 }
