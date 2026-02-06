@@ -172,7 +172,7 @@ public partial class GameModeMenu : Control
             out _bonusSpeedSlider, out _bonusSpeedValueLabel, OnBonusSpeedChanged);
 
         // Total Enemies
-        AddSliderRow(leftCol, "Total Enemies", 10, 400, 10, 50,
+        AddSliderRow(leftCol, "Total Enemies", 0, 400, 10, 50,
             out _totalEnemiesSlider, out _totalEnemiesValueLabel, OnTotalEnemiesChanged);
 
         // Right slider column
@@ -186,11 +186,11 @@ public partial class GameModeMenu : Control
         rightCol.AddChild(_stabModeCheck);
 
         // Power-Up Spawn Interval
-        AddSliderRow(rightCol, "Power-Up Spawn (sec)", 1, 30, 1, 3,
+        AddSliderRow(rightCol, "Power-Up Spawn (sec)", 1, 30, 1, 10,
             out _powerUpSpawnSlider, out _powerUpSpawnValueLabel, OnPowerUpSpawnChanged);
 
         // VIP Spawn Interval
-        AddSliderRow(rightCol, "VIP Spawn (sec)", 5, 60, 1, 12,
+        AddSliderRow(rightCol, "VIP Spawn (sec)", 5, 60, 1, 10,
             out _vipSpawnSlider, out _vipSpawnValueLabel, OnVipSpawnChanged);
 
         // World Size

@@ -24,6 +24,9 @@ public partial class GameWorld : Node2D
 	private const float ReferenceWidth = 1920f;
 	private const float ReferenceHeight = 1080f;
 	private const float AspectRatio = ReferenceWidth / ReferenceHeight; // 16:9
+
+	private float GetReferenceWidth() => ReferenceWidth * _settings.WorldSizeScaler;
+	private float GetReferenceHeight() => ReferenceHeight * _settings.WorldSizeScaler;
 	private const float BaseWallThickness = 20f;
 	private const float LeaderboardRefWidth = 125f;
 
@@ -88,6 +91,7 @@ public partial class GameWorld : Node2D
 		GameDurationSeconds = _settings.GameDurationSeconds;
 		_powerUpSpawnInterval = _settings.PowerUpSpawnInterval;
 		_vipSpawnInterval = _settings.VipSpawnInterval;
+		NpcCount = _settings.TotalEnemies;
 
 		// Load derived character scenes
 		_npcCharacterScene = GD.Load<PackedScene>("res://Scenes/Game/NpcCharacter.tscn");
@@ -296,7 +300,7 @@ public partial class GameWorld : Node2D
 		var viewportSize = GetViewportRect().Size;
 
 		// Reserve leaderboard width based on viewport height scale
-		float heightScale = viewportSize.Y / ReferenceHeight;
+		float heightScale = viewportSize.Y / GetReferenceHeight();
 		_leaderboardWidth = LeaderboardRefWidth * heightScale;
 		float availableWidth = viewportSize.X - _leaderboardWidth;
 
@@ -320,7 +324,7 @@ public partial class GameWorld : Node2D
 		);
 
 		// Calculate scale factor based on game area height vs reference
-		_scaleFactor = _gameAreaSize.Y / ReferenceHeight;
+		_scaleFactor = _gameAreaSize.Y / GetReferenceHeight();
 
 		// Position this node to offset the game area
 		Position = _gameAreaOffset;
@@ -616,9 +620,9 @@ public partial class GameWorld : Node2D
 		var result = new List<StabCharacter>();
 		float radiusSquared = radius * radius;
 
-			var circle = new GrabDebugCircle(radius);
-			circle.Position = position;
-		AddChild(circle);
+		//var circle = new GrabDebugCircle(radius);
+		//circle.Position = position;
+		//AddChild(circle);
 		foreach (var character in _playerCharacters.Values)
 		{
 			if (!IsInstanceValid(character)) continue;

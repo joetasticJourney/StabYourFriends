@@ -5,6 +5,7 @@ using Godot;
 using StabYourFriends.Autoload;
 using StabYourFriends.Controllers;
 using StabYourFriends.Game;
+using StabYourFriends.Networking;
 
 namespace StabYourFriends.UI;
 
@@ -18,6 +19,7 @@ public partial class LobbyScreen : Control
 	private GridContainer _playerGrid = null!;
 	private Button _startButton = null!;
 	private Button _fullscreenButton = null!;
+	private Button _regenCertButton = null!;
 	private Label _statusLabel = null!;
 	private GameModeMenu? _gameModeMenu;
 
@@ -35,6 +37,12 @@ public partial class LobbyScreen : Control
 		_startButton.Pressed += OnStartPressed;
 		_fullscreenButton.Pressed += OnFullscreenPressed;
 		UpdateFullscreenButtonText();
+
+		// Add regenerate certificate button next to fullscreen button
+		_regenCertButton = new Button();
+		_regenCertButton.Text = "Regen SSL";
+		_regenCertButton.Pressed += OnRegenCertPressed;
+		_fullscreenButton.GetParent().AddChild(_regenCertButton);
 
 		GenerateQRCode();
 
@@ -151,6 +159,14 @@ public partial class LobbyScreen : Control
 		_fullscreenButton.Text = currentMode == DisplayServer.WindowMode.Fullscreen ? "Windowed" : "Fullscreen";
 	}
 
+	private void OnRegenCertPressed()
+	{
+		TlsCertificateManager.ForceRegenerate();
+		TlsCertificateManager.EnsureCertificateExists(GameManager.Instance.ServerIpAddress);
+		GenerateQRCode();
+		GD.Print("SSL certificate regenerated. Players may need to re-accept the certificate.");
+	}
+
 	private void ShowGameModeMenu()
 	{
 		if (_gameModeMenu != null) return;
@@ -196,6 +212,7 @@ public partial class LobbyScreen : Control
 	{
 		_startButton.Pressed -= OnStartPressed;
 		_fullscreenButton.Pressed -= OnFullscreenPressed;
+		_regenCertButton.Pressed -= OnRegenCertPressed;
 		HideGameModeMenu();
 
 		if (GameManager.Instance != null)

@@ -410,9 +410,13 @@ public partial class StabCharacter : CharacterBody2D
 			ClearGrappledState();
 		}
 
-		// If grappled, cannot move
+		// If grappled, cannot move but can still use actions (like smoke bomb)
 		if (_isGrappled)
 		{
+			if (!IsNpc)
+			{
+				ProcessPlayerActions();
+			}
 			Velocity = Vector2.Zero;
 			UpdateFacingFromVelocity(Vector2.Zero);
 			MoveAndSlide();
@@ -501,13 +505,9 @@ public partial class StabCharacter : CharacterBody2D
 		}
 	}
 
-	private void ProcessPlayerInput(float delta)
+	private void ProcessPlayerActions()
 	{
-		if (_controller == null)
-		{
-			Velocity = Vector2.Zero;
-			return;
-		}
+		if (_controller == null) return;
 
 		var input = _controller.CurrentInput;
 
@@ -526,6 +526,20 @@ public partial class StabCharacter : CharacterBody2D
 		{
 			OnAction2();
 		}
+	}
+
+	private void ProcessPlayerInput(float delta)
+	{
+		if (_controller == null)
+		{
+			Velocity = Vector2.Zero;
+			return;
+		}
+
+		// Process action buttons
+		ProcessPlayerActions();
+
+		var input = _controller.CurrentInput;
 
 		// Grappling movement - orbit around target
 		if (_isGrappling && _grappleTarget != null)
@@ -1138,12 +1152,17 @@ public partial class StabCharacter : CharacterBody2D
 	private void ClearGrappledState()
 	{
 		GD.Print($"[Grapple] {CharacterName}: Clearing grappled state (was grappled by: {_grappledBy?.CharacterName ?? "none"})");
-
-		if (_isGrappled && ReverseGripCount > 0)
+		if (_isGrappled)
 		{
-			ReverseGripCount--;
-			GD.Print($"[ReverseGrip] {CharacterName} used a reverse grip charge, {ReverseGripCount} remaining");
-		}
+            _grappleReleaseMsec = Time.GetTicksMsec();
+            if (ReverseGripCount > 0)
+            {
+                ReverseGripCount--;
+                GD.Print($"[ReverseGrip] {CharacterName} used a reverse grip charge, {ReverseGripCount} remaining");
+            }
+        }
+
+
 
 		_isGrappled = false;
 		_grappledBy = null;
@@ -1321,7 +1340,7 @@ public partial class StabCharacter : CharacterBody2D
 		};
 
 		// Draw debug triangle for the cone
-		SpawnDebugCone(spawnPosition, angle, scaledDistance);
+		//SpawnDebugCone(spawnPosition, angle, scaledDistance);
 
 		// Splatter blood on characters inside the cone
 		SplatterCharactersInCone(spawnPosition, angle, scaledDistance);
