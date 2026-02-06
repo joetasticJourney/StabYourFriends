@@ -8,6 +8,7 @@ public partial class TurboStabPowerUp : PowerUp
 	{
 		Label = "TS";
 		PowerUpColor = new Color(0.2f, 0.8f, 0.9f); // Cyan
+		SoundPath = "res://Sounds/TurboStab.mp3";
 	}
 
 	protected override void Pickup(StabCharacter character)

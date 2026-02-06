@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c4b65gessrm0j"
+path="res://.godot/imported/VIP Death 1.mp3-17c2b4f5ab6723bb28c401baa0e8509c.mp3str"
+
+[deps]
+
+source_file="res://Sounds/VIP Death 1.mp3"
+dest_files=["res://.godot/imported/VIP Death 1.mp3-17c2b4f5ab6723bb28c401baa0e8509c.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

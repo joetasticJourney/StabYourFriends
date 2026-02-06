@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bm4dglkggwvmm"
+path="res://.godot/imported/NPC Death 5.mp3-21937d0387aac7e2b07c98d8ef55327d.mp3str"
+
+[deps]
+
+source_file="res://Sounds/NPC Death 5.mp3"
+dest_files=["res://.godot/imported/NPC Death 5.mp3-21937d0387aac7e2b07c98d8ef55327d.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

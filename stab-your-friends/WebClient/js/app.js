@@ -170,6 +170,14 @@ class App {
             case 'gameEnd':
                 this.handleGameEnd();
                 break;
+            case 'oof':
+                console.log('Received oof message');
+                this.controller.playOof();
+                break;
+            case 'death':
+                console.log('Received death message');
+                this.controller.playDeath();
+                break;
         }
     }
 

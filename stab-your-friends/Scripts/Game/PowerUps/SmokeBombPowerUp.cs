@@ -8,6 +8,7 @@ public partial class SmokeBombPowerUp : PowerUp
 	{
 		Label = "SB";
 		PowerUpColor = new Color(0.5f, 0.5f, 0.5f); // Gray
+		SoundPath = "res://Sounds/SmokeBomb.mp3";
 	}
 
 	protected override void Pickup(StabCharacter character)

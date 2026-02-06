@@ -8,6 +8,7 @@ public partial class VictoryPointPowerUp : PowerUp
 	{
 		Label = "VP";
 		PowerUpColor = new Color(1.0f, 0.84f, 0.0f); // Gold
+		SoundPath = "res://Sounds/VictoryPoint.mp3";
 	}
 
 	protected override void Pickup(StabCharacter character)

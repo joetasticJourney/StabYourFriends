@@ -8,6 +8,7 @@ public partial class KungFuPowerUp : PowerUp
 	{
 		Label = "KF";
 		PowerUpColor = new Color(1.0f, 0.4f, 0.2f); // Orange-red
+		SoundPath = "res://Sounds/KungFu.mp3";
 	}
 
 	protected override void Pickup(StabCharacter character)

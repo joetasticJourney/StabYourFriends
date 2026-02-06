@@ -15,4 +15,6 @@ public class GameSettings
     public float PlayerBonusSpeed { get; set; } = 100f;
     public float PowerUpSpawnInterval { get; set; } = 3f;
     public float VipSpawnInterval { get; set; } = 12f;
+    public float WorldSizeScaler { get; set; } = 1.0f;
+    public int TotalEnemies { get; set; } = 50;
 }

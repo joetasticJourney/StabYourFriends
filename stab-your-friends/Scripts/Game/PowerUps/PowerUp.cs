@@ -11,6 +11,7 @@ public partial class PowerUp : Node2D
 
 	public string Label { get; protected set; } = "??";
 	protected Color PowerUpColor { get; set; } = new Color(0.2f, 0.8f, 0.9f);
+	protected string? SoundPath { get; set; }
 
 	private float _scaleFactor = 1f;
 	private float _time;
@@ -33,7 +34,7 @@ public partial class PowerUp : Node2D
 	{
 		_time += (float)delta;
 
-		float pickupRadius = BasePickupRadius * _scaleFactor;
+		float pickupRadius = 2.0f * BasePickupRadius * _scaleFactor;
 		var nearbyPlayers = _gameWorld.GetNearbyPlayerCharacters(Position, pickupRadius);
 
 		if (nearbyPlayers.Count > 0)
@@ -51,6 +52,23 @@ public partial class PowerUp : Node2D
 	protected virtual void Pickup(StabCharacter character)
 	{
 		GD.Print($"[PowerUp] {Label} picked up by {character.CharacterName}");
+		PlayPickupSound();
+	}
+
+	private void PlayPickupSound()
+	{
+		if (string.IsNullOrEmpty(SoundPath)) return;
+
+		var sound = GD.Load<AudioStream>(SoundPath);
+		if (sound == null) return;
+
+		var player = new AudioStreamPlayer();
+		player.Stream = sound;
+		player.Bus = "Master";
+		player.VolumeDb = -12f; // 25% volume
+		_gameWorld.AddChild(player);
+		player.Play();
+		player.Finished += () => player.QueueFree();
 	}
 
 	public override void _Draw()

@@ -871,23 +871,30 @@ public partial class StabCharacter : CharacterBody2D
 
 		string attackType = _rng.RandiRange(0, 1) == 0 ? "attack1_" : "attack2_";
 		string animName = attackType + dirSuffix;
-		_playingAttackAnim = true;
+
+		// Ensure we don't double-connect
+		if (_playingAttackAnim)
+		{
+			_animatedSprite.AnimationFinished -= OnAttackAnimationFinished;
+		}
 		_animatedSprite.AnimationFinished += OnAttackAnimationFinished;
+		_playingAttackAnim = true;
 		_animatedSprite.Play(animName);
 	}
 
 	private void OnAttackAnimationFinished()
 	{
 		_animatedSprite.AnimationFinished -= OnAttackAnimationFinished;
+		_playingAttackAnim = false;
 
 		if (_isGrappling)
 		{
 			// Hold on the last frame of the attack animation while grappling
 			_animatedSprite.Pause();
+			_playingAttackAnim = true;
 			return;
 		}
 
-		_playingAttackAnim = false;
 		PlayAnimation();
 	}
 
@@ -1034,7 +1041,7 @@ public partial class StabCharacter : CharacterBody2D
 				stabDirection = (target.Position - Position).Normalized();
 			}
 
-			SpawnStabParticles(target.GlobalPosition, stabDirection);
+			SpawnStabParticles(target.Position, stabDirection);
 			target.TakeDamage(GrappleDamage, this);
 
 			if(target.Health==0)
@@ -1229,7 +1236,7 @@ public partial class StabCharacter : CharacterBody2D
 			{
 				stabDirection = (_grappleTarget.Position - Position).Normalized();
 			}
-			SpawnStabParticles(_grappleTarget.GlobalPosition, stabDirection);
+			SpawnStabParticles(_grappleTarget.Position, stabDirection);
 
 			_grappleTarget.TakeDamage(StabDamage, this);
 		}
@@ -1239,7 +1246,7 @@ public partial class StabCharacter : CharacterBody2D
 		{
 			GD.Print($"[ReverseGrip] {CharacterName} reverse-stabs {_grappledBy.CharacterName} for {StabDamage} damage!");
 			var reverseDirection = (_grappledBy.Position - Position).Normalized();
-			SpawnStabParticles(_grappledBy.GlobalPosition, reverseDirection);
+			SpawnStabParticles(_grappledBy.Position, reverseDirection);
 			_grappledBy.TakeDamage(StabDamage, this);
 		}
 	}
@@ -1258,7 +1265,7 @@ public partial class StabCharacter : CharacterBody2D
 		particles.Lifetime = StabParticleLifetime;
 		particles.OneShot = true;
 		particles.Explosiveness = 0.9f;
-		particles.GlobalPosition = spawnPosition;
+		particles.Position = spawnPosition;
 
 		var material = new ParticleProcessMaterial();
 
@@ -1273,7 +1280,7 @@ public partial class StabCharacter : CharacterBody2D
 		material.InitialVelocityMax = speed * 1.2f;
 
 		// Particle size
-		float particleSize = 3f * _scaleFactor;
+		float particleSize = 3f * _scaleFactor * (1f+(float)KungFuCount / 4.0f);
 		material.ScaleMin = particleSize;
 		material.ScaleMax = particleSize * 1.5f;
 
@@ -1489,6 +1496,12 @@ public partial class StabCharacter : CharacterBody2D
 		Health -= amount;
 		GD.Print($"[Health] {CharacterName} took {amount} damage from {attacker?.CharacterName ?? "unknown"}. Health: {Health}/{MaxHealth}");
 
+		// Play oof sound on victim's controller if damaged by another player
+		if (!IsNpc && attacker != null && !attacker.IsNpc)
+		{
+			GameManager.Instance.SendToPlayer(CharacterId, new OofMessage());
+		}
+
 		if (Health <= 0)
 		{
 			Health = 0;
@@ -1548,10 +1561,13 @@ public partial class StabCharacter : CharacterBody2D
 			GD.Print("[ColorBlind] Joe! has died — colorblind mode enabled");
 		}
 
-		if (IsNpc)
-			_deathSoundPlayer?.Play();
-		else
-			_deathScreamPlayer?.Play();
+		PlayDeathSound();
+
+		// Send death message to player's controller (not NPCs)
+		if (!IsNpc)
+		{
+			GameManager.Instance.SendToPlayer(CharacterId, new DeathMessage());
+		}
 
 		// Award a point and transfer power-ups to the killer
 		if (killer != null && !killer.IsDead)
@@ -1591,6 +1607,14 @@ public partial class StabCharacter : CharacterBody2D
 		CreateDeathVisuals();
 
 		SendPlayerState();
+	}
+
+	protected virtual void PlayDeathSound()
+	{
+		if (IsNpc)
+			_deathSoundPlayer?.Play();
+		//else
+			//_deathScreamPlayer?.Play();
 	}
 
 	private void CreateDeathVisuals()

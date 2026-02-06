@@ -19,7 +19,6 @@ public partial class GameModeMenu : Control
     private CheckBox _turboStabCheck = null!;
     private HSlider _grappleDamageSlider = null!;
     private Label _grappleDamageValueLabel = null!;
-    private CheckBox _colorBlindCheck = null!;
     private CheckBox _stabModeCheck = null!;
     private HSlider _speedSlider = null!;
     private Label _speedValueLabel = null!;
@@ -29,6 +28,10 @@ public partial class GameModeMenu : Control
     private Label _powerUpSpawnValueLabel = null!;
     private HSlider _vipSpawnSlider = null!;
     private Label _vipSpawnValueLabel = null!;
+    private HSlider _worldSizeSlider = null!;
+    private Label _worldSizeValueLabel = null!;
+    private HSlider _totalEnemiesSlider = null!;
+    private Label _totalEnemiesValueLabel = null!;
 
     // Bottom buttons
     private Button _launchButton = null!;
@@ -168,6 +171,10 @@ public partial class GameModeMenu : Control
         AddSliderRow(leftCol, "Player Bonus Speed", 25, 200, 5, 100,
             out _bonusSpeedSlider, out _bonusSpeedValueLabel, OnBonusSpeedChanged);
 
+        // Total Enemies
+        AddSliderRow(leftCol, "Total Enemies", 10, 400, 10, 50,
+            out _totalEnemiesSlider, out _totalEnemiesValueLabel, OnTotalEnemiesChanged);
+
         // Right slider column
         var rightCol = new VBoxContainer();
         rightCol.AddThemeConstantOverride("separation", 6);
@@ -178,10 +185,6 @@ public partial class GameModeMenu : Control
         _stabModeCheck = CreateCheckBox("Controller Mode", false);
         rightCol.AddChild(_stabModeCheck);
 
-        // Color Blind Mode
-        _colorBlindCheck = CreateCheckBox("Color Blind Mode", false);
-        rightCol.AddChild(_colorBlindCheck);
-
         // Power-Up Spawn Interval
         AddSliderRow(rightCol, "Power-Up Spawn (sec)", 1, 30, 1, 3,
             out _powerUpSpawnSlider, out _powerUpSpawnValueLabel, OnPowerUpSpawnChanged);
@@ -189,6 +192,11 @@ public partial class GameModeMenu : Control
         // VIP Spawn Interval
         AddSliderRow(rightCol, "VIP Spawn (sec)", 5, 60, 1, 12,
             out _vipSpawnSlider, out _vipSpawnValueLabel, OnVipSpawnChanged);
+
+        // World Size
+        AddSliderRow(rightCol, "World Size", 0, 10, 0.5, 5,
+            out _worldSizeSlider, out _worldSizeValueLabel, OnWorldSizeChanged);
+        _worldSizeValueLabel.Text = WorldSizeScalerFromSlider(5).ToString("F1");
 
         AddSeparator(vbox);
 
@@ -297,6 +305,11 @@ public partial class GameModeMenu : Control
         _bonusSpeedValueLabel.Text = ((int)value).ToString();
     }
 
+    private void OnTotalEnemiesChanged(double value)
+    {
+        _totalEnemiesValueLabel.Text = ((int)value).ToString();
+    }
+
     private void OnPowerUpSpawnChanged(double value)
     {
         _powerUpSpawnValueLabel.Text = ((int)value).ToString();
@@ -305,6 +318,29 @@ public partial class GameModeMenu : Control
     private void OnVipSpawnChanged(double value)
     {
         _vipSpawnValueLabel.Text = ((int)value).ToString();
+    }
+
+    private void OnWorldSizeChanged(double value)
+    {
+        _worldSizeValueLabel.Text = WorldSizeScalerFromSlider(value).ToString("F1");
+    }
+
+    private static float WorldSizeScalerFromSlider(double sliderValue)
+    {
+        // 0 → 0.2f, 10 → 5.0f (linear interpolation)
+        if(sliderValue == 5)
+        {
+            return 1;
+        }
+        if( sliderValue < 5)
+        {
+            return (1.0f / Mathf.Lerp( 1f, 2f, (float) Mathf.Abs(sliderValue - 5f) / 5f ));
+        }
+        else
+        {
+            return (Mathf.Lerp(1f, 2.5f,(float) (sliderValue - 5f) / 5f));
+        }
+
     }
 
     private void OnLaunchPressed()
@@ -318,12 +354,13 @@ public partial class GameModeMenu : Control
             EnableSmokeBombs = _smokeBombCheck.ButtonPressed,
             EnableTurboStab = _turboStabCheck.ButtonPressed,
             GrappleDamage = (int)_grappleDamageSlider.Value,
-            ColorBlindMode = _colorBlindCheck.ButtonPressed,
             ControllerMode = _stabModeCheck.ButtonPressed,
             PlayerMoveSpeed = (float)_speedSlider.Value,
             PlayerBonusSpeed = (float)_bonusSpeedSlider.Value,
             PowerUpSpawnInterval = (float)_powerUpSpawnSlider.Value,
             VipSpawnInterval = (float)_vipSpawnSlider.Value,
+            WorldSizeScaler = WorldSizeScalerFromSlider(_worldSizeSlider.Value),
+            TotalEnemies = (int)_totalEnemiesSlider.Value,
         };
 
         GD.Print($"Game launching: duration={_gameDurationSeconds}s, grappleDmg={Settings.GrappleDamage}, colorBlind={Settings.ColorBlindMode}, speed={Settings.PlayerMoveSpeed}");
@@ -342,7 +379,9 @@ public partial class GameModeMenu : Control
         _grappleDamageSlider.ValueChanged -= OnGrappleDamageChanged;
         _speedSlider.ValueChanged -= OnSpeedChanged;
         _bonusSpeedSlider.ValueChanged -= OnBonusSpeedChanged;
+        _totalEnemiesSlider.ValueChanged -= OnTotalEnemiesChanged;
         _powerUpSpawnSlider.ValueChanged -= OnPowerUpSpawnChanged;
         _vipSpawnSlider.ValueChanged -= OnVipSpawnChanged;
+        _worldSizeSlider.ValueChanged -= OnWorldSizeChanged;
     }
 }

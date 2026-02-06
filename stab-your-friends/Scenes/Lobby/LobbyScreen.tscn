@@ -94,3 +94,17 @@ layout_mode = 2
 size_flags_horizontal = 4
 disabled = true
 text = "Start Game"
+
+[node name="FullscreenButton" type="Button" parent="."]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -140.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 60.0
+grow_horizontal = 0
+text = "Windowed"

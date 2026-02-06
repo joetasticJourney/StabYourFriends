@@ -31,6 +31,12 @@ export class Controller {
         this.audioContext = null;
         this.gotchaBuffer = null;
         this.stabBuffer = null;
+        this.oofBuffers = [];
+        this.oofOrder = [];
+        this.oofIndex = 0;
+        this.deathBuffers = [];
+        this.deathOrder = [];
+        this.deathIndex = 0;
 
         this.controllerMode = false;
 
@@ -365,6 +371,11 @@ export class Controller {
         console.log('Stab speed:', newStabSpeed);
 
         if (!wasStabMode && this.stabMode) {
+            // Reset acceleration only in shake mode to prevent instant stabs from stale values
+            if (!this.controllerMode) {
+                this.lastAcceleration = { x: 0, y: 0, z: 0 };
+                this.lastShakeTime = Date.now();
+            }
             this.playBuffer(this.gotchaBuffer);
         }
     }
@@ -458,9 +469,78 @@ export class Controller {
                 this.audioContext.decodeAudioData(gotchaData),
                 this.audioContext.decodeAudioData(stabData)
             ]);
+
+            // Load oof sounds
+            const oofPromises = [];
+            for (let i = 1; i <= 8; i++) {
+                oofPromises.push(fetch(`Sounds/Oof${i}.mp3`).then(r => r.arrayBuffer()));
+            }
+            const oofDataArr = await Promise.all(oofPromises);
+            this.oofBuffers = await Promise.all(
+                oofDataArr.map(data => this.audioContext.decodeAudioData(data))
+            );
+
+            // Create shuffled order for oof sounds
+            this.shuffleOofOrder();
+            console.log('Oof buffers loaded:', this.oofBuffers.length);
+
+            // Load Out of Health sounds (death sounds)
+            const deathPromises = [];
+            for (let i = 1; i <= 5; i++) {
+                deathPromises.push(fetch(`Sounds/OutOfHealth${i}.mp3`).then(r => r.arrayBuffer()));
+            }
+            const deathDataArr = await Promise.all(deathPromises);
+            this.deathBuffers = await Promise.all(
+                deathDataArr.map(data => this.audioContext.decodeAudioData(data))
+            );
+
+            // Create shuffled order for death sounds
+            this.shuffleDeathOrder();
+            console.log('Death buffers loaded:', this.deathBuffers.length);
+
             console.log('Audio buffers decoded');
         } catch (e) {
             console.error('Failed to init audio:', e);
+        }
+    }
+
+    shuffleOofOrder() {
+        this.oofOrder = [0, 1, 2, 3, 4, 5, 6, 7];
+        for (let i = this.oofOrder.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.oofOrder[i], this.oofOrder[j]] = [this.oofOrder[j], this.oofOrder[i]];
+        }
+        this.oofIndex = 0;
+    }
+
+    shuffleDeathOrder() {
+        this.deathOrder = [0, 1, 2, 3, 4];
+        for (let i = this.deathOrder.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.deathOrder[i], this.deathOrder[j]] = [this.deathOrder[j], this.deathOrder[i]];
+        }
+        this.deathIndex = 0;
+    }
+
+    playOof() {
+        console.log('playOof called, buffers:', this.oofBuffers.length);
+        if (this.oofBuffers.length === 0) return;
+        const bufferIndex = this.oofOrder[this.oofIndex];
+        this.playBuffer(this.oofBuffers[bufferIndex]);
+        this.oofIndex++;
+        if (this.oofIndex >= this.oofOrder.length) {
+            this.shuffleOofOrder();
+        }
+    }
+
+    playDeath() {
+        console.log('playDeath called, buffers:', this.deathBuffers.length);
+        if (this.deathBuffers.length === 0) return;
+        const bufferIndex = this.deathOrder[this.deathIndex];
+        this.playBuffer(this.deathBuffers[bufferIndex]);
+        this.deathIndex++;
+        if (this.deathIndex >= this.deathOrder.length) {
+            this.shuffleDeathOrder();
         }
     }
 

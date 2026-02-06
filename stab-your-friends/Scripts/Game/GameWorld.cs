@@ -707,7 +707,9 @@ public partial class GameWorld : Node2D
 
 	private void StartPowerUpTimer()
 	{
-		float interval = _powerUpRng.RandfRange(_powerUpSpawnInterval * 0.5f, _powerUpSpawnInterval * 1.5f);
+		float minInterval = Mathf.Max(1f, _powerUpSpawnInterval - 5f);
+		float maxInterval = _powerUpSpawnInterval + 5f;
+		float interval = _powerUpRng.RandfRange(minInterval, maxInterval);
 		_powerUpTimer.WaitTime = interval;
 		_powerUpTimer.Start();
 	}
@@ -779,7 +781,9 @@ public partial class GameWorld : Node2D
 
 	private void StartVipTimer()
 	{
-		float interval = _vipRng.RandfRange(_vipSpawnInterval * 0.5f, _vipSpawnInterval * 1.5f);
+		float minInterval = Mathf.Max(1f, _vipSpawnInterval - 5f);
+		float maxInterval = _vipSpawnInterval + 5f;
+		float interval = _vipRng.RandfRange(minInterval, maxInterval);
 		_vipTimer.WaitTime = interval;
 		_vipTimer.Start();
 	}
